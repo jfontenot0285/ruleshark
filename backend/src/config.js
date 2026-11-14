@@ -19,6 +19,12 @@ export const config = {
   mongoUri: ensureDbName(mongoUri),
   jwtSecret: process.env.JWT_SECRET || "ruleshark-dev-secret-change-me",
   clientOrigin: process.env.CLIENT_ORIGIN || "http://localhost:5173",
+  openaiApiKey: process.env.OPENAI_API_KEY || "",
+  openaiModel: process.env.OPENAI_MODEL || "gpt-4o-mini",
+  // Default to mock analysis when no API key is set so local UI testing works.
+  mockAnalyze:
+    process.env.MOCK_ANALYZE === "true" ||
+    (!process.env.OPENAI_API_KEY && process.env.MOCK_ANALYZE !== "false"),
 };
 
 function ensureDbName(uri) {

@@ -32,9 +32,8 @@ export default function RegisterPage() {
   return (
     <div className="shell auth-shell">
       <div className="landing-atmosphere" aria-hidden="true" />
-      <Link to="/" className="brand-mark auth-brand">
-        <img src="/logo.jpeg" alt="" className="brand-mark-icon" />
-        <span>RuleShark</span>
+      <Link to="/" className="brand-mark auth-brand" aria-label="RuleShark home">
+        <img src="/logo_shark.jpeg" alt="" className="brand-mark-icon" />
       </Link>
 
       <form className="auth-panel" onSubmit={onSubmit}>

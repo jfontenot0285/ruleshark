@@ -3,6 +3,9 @@ import cors from "cors";
 import { config } from "./config.js";
 import { connectDb } from "./db.js";
 import authRoutes from "./routes/auth.js";
+import rulesRoutes from "./routes/rules.js";
+import analyzeRoutes from "./routes/analyze.js";
+import suggestionsRoutes from "./routes/suggestions.js";
 
 const app = express();
 
@@ -12,13 +15,16 @@ app.use(
     credentials: true,
   })
 );
-app.use(express.json());
+app.use(express.json({ limit: "2mb" }));
 
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true, service: "ruleshark-api" });
 });
 
 app.use("/api/auth", authRoutes);
+app.use("/api/rules", rulesRoutes);
+app.use("/api/analyze", analyzeRoutes);
+app.use("/api/suggestions", suggestionsRoutes);
 
 app.use((err, _req, res, _next) => {
   if (err?.type === "entity.parse.failed") {

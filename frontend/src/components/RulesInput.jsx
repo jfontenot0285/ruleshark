@@ -9,12 +9,18 @@ function formatBytes(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+const SAMPLE_FILE_HREF = "/samples/two-player-card-game-rules.txt";
+const SAMPLE_FILE_NAME = "two-player-card-game-rules.txt";
+
 export default function RulesInput({
   submitLabelUpload = "Upload & save",
   submitLabelPaste = "Submit & save as file",
   submittingLabel = "Working…",
+  testPlayLabel = "Test play",
   onSubmit,
+  onTestPlay = null,
   footer = null,
+  showSampleDownload = false,
 }) {
   const [mode, setMode] = useState("upload");
   const [title, setTitle] = useState("");
@@ -23,6 +29,34 @@ export default function RulesInput({
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [dragging, setDragging] = useState(false);
+
+  function assignFile(nextFile) {
+    setFile(nextFile || null);
+    setError("");
+    setSuccess("");
+  }
+
+  function onDragOver(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!dragging) setDragging(true);
+  }
+
+  function onDragLeave(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.currentTarget.contains(e.relatedTarget)) return;
+    setDragging(false);
+  }
+
+  function onDrop(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragging(false);
+    const dropped = e.dataTransfer.files?.[0];
+    if (dropped) assignFile(dropped);
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -56,33 +90,45 @@ export default function RulesInput({
 
   return (
     <>
-      <div className="mode-toggle" role="tablist" aria-label="Input method">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={mode === "upload"}
-          className={`mode-btn ${mode === "upload" ? "is-active" : ""}`}
-          onClick={() => {
-            setMode("upload");
-            setError("");
-            setSuccess("");
-          }}
-        >
-          Upload file
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={mode === "paste"}
-          className={`mode-btn ${mode === "paste" ? "is-active" : ""}`}
-          onClick={() => {
-            setMode("paste");
-            setError("");
-            setSuccess("");
-          }}
-        >
-          Paste text
-        </button>
+      <div className="rules-input-toolbar">
+        <div className="mode-toggle" role="tablist" aria-label="Input method">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === "upload"}
+            className={`mode-btn ${mode === "upload" ? "is-active" : ""}`}
+            onClick={() => {
+              setMode("upload");
+              setError("");
+              setSuccess("");
+            }}
+          >
+            Upload file
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === "paste"}
+            className={`mode-btn ${mode === "paste" ? "is-active" : ""}`}
+            onClick={() => {
+              setMode("paste");
+              setError("");
+              setSuccess("");
+            }}
+          >
+            Paste text
+          </button>
+        </div>
+
+        {showSampleDownload ? (
+          <a
+            className="btn btn-secondary sample-download"
+            href={SAMPLE_FILE_HREF}
+            download={SAMPLE_FILE_NAME}
+          >
+            Download sample file
+          </a>
+        ) : null}
       </div>
 
       <form className="rules-form" onSubmit={handleSubmit}>
@@ -96,46 +142,89 @@ export default function RulesInput({
           />
         </label>
 
-        {mode === "upload" ? (
-          <label className="field file-field">
-            <span>Rules file</span>
-            <input
-              type="file"
-              accept={ACCEPT}
-              onChange={(e) => setFile(e.target.files?.[0] || null)}
-            />
-            <span className="field-hint">
-              PDF, Word (.doc/.docx), or text-based files up to 15MB.
-            </span>
-            {file ? (
-              <span className="file-chosen">
-                {file.name} · {formatBytes(file.size)}
-              </span>
-            ) : null}
-          </label>
-        ) : (
-          <label className="field">
-            <span>Rules text</span>
-            <textarea
-              rows={12}
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              placeholder="Paste your game rules here…"
-              required
-            />
-          </label>
-        )}
+        <div className="rules-input-body">
+          {mode === "upload" ? (
+            <div className="field file-field">
+              <span>Rules file</span>
+              <label
+                className={`file-drop ${dragging ? "is-dragging" : ""} ${file ? "has-file" : ""}`}
+                onDragEnter={onDragOver}
+                onDragOver={onDragOver}
+                onDragLeave={onDragLeave}
+                onDrop={onDrop}
+              >
+                <input
+                  type="file"
+                  accept={ACCEPT}
+                  onChange={(e) => assignFile(e.target.files?.[0] || null)}
+                />
+                <span className="file-drop-label">Click or drag file to upload</span>
+                <span className="field-hint">
+                  PDF, Word (.doc/.docx), or text-based files up to 15MB.
+                </span>
+                {file ? (
+                  <span className="file-chosen">
+                    {file.name} · {formatBytes(file.size)}
+                  </span>
+                ) : null}
+              </label>
+            </div>
+          ) : (
+            <label className="field">
+              <span>Rules text</span>
+              <textarea
+                className="rules-textarea"
+                rows={12}
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                placeholder="Paste your game rules here…"
+                required
+              />
+            </label>
+          )}
+        </div>
 
         {error ? <p className="form-error">{error}</p> : null}
         {success ? <p className="form-success">{success}</p> : null}
 
-        <button className="btn btn-primary" type="submit" disabled={submitting}>
-          {submitting
-            ? submittingLabel
-            : mode === "upload"
-              ? submitLabelUpload
-              : submitLabelPaste}
-        </button>
+        <div className="form-actions">
+          <button className="btn btn-primary" type="submit" disabled={submitting}>
+            {submitting
+              ? submittingLabel
+              : mode === "upload"
+                ? submitLabelUpload
+                : submitLabelPaste}
+          </button>
+          <button
+            className="btn btn-secondary"
+            type="button"
+            disabled={submitting}
+            onClick={() => {
+              setError("");
+              setSuccess("");
+              if (mode === "upload" && !file) {
+                setError("Choose a rules file before opening Test play.");
+                return;
+              }
+              if (mode === "paste" && !text.trim()) {
+                setError("Paste rules text before opening Test play.");
+                return;
+              }
+              if (!onTestPlay) {
+                setError("Test play is not available here.");
+                return;
+              }
+              onTestPlay({
+                mode,
+                title: title.trim(),
+                file,
+                text,
+              });
+            }}
+          >
+            {testPlayLabel}
+          </button>
+        </div>
 
         {footer}
       </form>

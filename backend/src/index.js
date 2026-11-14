@@ -6,6 +6,7 @@ import authRoutes from "./routes/auth.js";
 import rulesRoutes from "./routes/rules.js";
 import analyzeRoutes from "./routes/analyze.js";
 import suggestionsRoutes from "./routes/suggestions.js";
+import simulateRoutes from "./routes/simulate.js";
 
 const app = express();
 
@@ -25,6 +26,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/rules", rulesRoutes);
 app.use("/api/analyze", analyzeRoutes);
 app.use("/api/suggestions", suggestionsRoutes);
+app.use("/api/simulate", simulateRoutes);
 
 app.use((err, _req, res, _next) => {
   if (err?.type === "entity.parse.failed") {
@@ -38,4 +40,9 @@ await connectDb();
 
 app.listen(config.port, () => {
   console.log(`RuleShark API listening on http://localhost:${config.port}`);
+  console.log(
+    `LLM mode: ${config.mockAnalyze ? "mock" : "OpenAI"} (${config.openaiModel})${
+      config.openaiApiKey ? "" : " — no OPENAI_API_KEY"
+    }`
+  );
 });

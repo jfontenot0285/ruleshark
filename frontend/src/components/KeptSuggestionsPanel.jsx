@@ -5,21 +5,24 @@ export default function KeptSuggestionsPanel({
   loading = false,
   isGuest = false,
   onRemove,
+  hideIntro = false,
 }) {
   return (
     <section className="kept-panel">
-      <div className="kept-panel-head">
-        <h2>Kept changes</h2>
-        <p className="muted">
-          {isGuest
-            ? "Saved in this browser only. Create an account to keep them permanently."
-            : "Saved to your account."}
-        </p>
-      </div>
+      {hideIntro ? null : (
+        <div className="kept-panel-head">
+          <h2>Kept changes</h2>
+          <p className="muted">
+            {isGuest
+              ? "Saved in this browser only. Create an account to keep them permanently."
+              : "Saved to your account."}
+          </p>
+        </div>
+      )}
 
       {loading ? <p className="muted">Loading…</p> : null}
 
-      {!loading && items.length === 0 ? (
+      {!loading && items.length === 0 && !hideIntro ? (
         <p className="muted">
           No kept changes yet. Analyze rules and click <strong>Keep</strong> on a suggestion.
         </p>
@@ -80,7 +83,7 @@ export default function KeptSuggestionsPanel({
         </ul>
       ) : null}
 
-      {isGuest ? (
+      {isGuest && !hideIntro ? (
         <p className="field-hint">
           <Link to="/register">Register</Link> to sync kept changes across devices.
         </p>

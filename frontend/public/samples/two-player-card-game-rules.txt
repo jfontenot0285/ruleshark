@@ -1,0 +1,42 @@
+TWO-PLAYER CARD DUEL
+A simple ruleset for two players.
+
+SETUP
+1. Use a standard 52-card deck.
+2. Shuffle the deck and deal 5 cards to each player.
+3. Place the remaining cards face down as the draw pile.
+4. Flip the top card of the draw pile to start the discard pile.
+5. The player with the lowest first card goes first. Ace is high.
+
+TURN STRUCTURE
+1. On your turn, draw 1 card from the draw pile.
+2. You may play 1 card from your hand onto the discard pile if it matches the suit or rank of the top discard.
+3. If you cannot play a card, you must draw 1 additional card and your turn ends.
+4. After playing a card, you may attack once by discarding any card of the same color as the card you just played.
+5. Players may only attack once per turn.
+6. If you attack, you must attack again immediately.
+
+SCORING AND COMBAT
+1. Red cards deal 1 damage.
+2. Black cards deal 2 damage.
+3. Face cards (J, Q, K) deal 3 damage.
+4. Aces deal 1 damage.
+5. Each player starts with 10 life.
+6. When a player takes damage equal to or greater than their remaining life, they are eliminated.
+
+SPECIAL CARDS
+1. Playing a 2 lets you skip the other player's next turn.
+2. Playing a 2 also forces the other player to draw 2 cards immediately.
+3. Queens reverse turn order.
+4. Since this is a two-player game, Queens instead let you take an extra turn.
+5. Jokers are not used.
+
+WINNING
+1. Reduce the other player to 0 life to win.
+2. If the draw pile runs out, reshuffle the discard pile to form a new draw pile.
+3. If both players reach 0 life on the same attack, the player who attacked wins.
+4. If both players reach 0 life on the same attack, the game is a draw.
+
+NOTES
+- Players must always have at least 1 card in hand. If a player would discard their last card while attacking, they cannot attack.
+- Players may hold a maximum of 7 cards. If you ever have more than 7 cards at the end of your turn, discard down to 5.

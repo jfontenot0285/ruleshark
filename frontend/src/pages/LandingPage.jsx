@@ -5,12 +5,15 @@ import { useAuth } from "../auth/AuthContext.jsx";
 import KeptSuggestionsPanel from "../components/KeptSuggestionsPanel.jsx";
 import RulesInput from "../components/RulesInput.jsx";
 import SuggestionsModal from "../components/SuggestionsModal.jsx";
+import TestPlayModal from "../components/TestPlayModal.jsx";
 import { loadGuestKept, removeGuestKept } from "../keptSuggestions.js";
 
 export default function LandingPage() {
   const { user, token, logout } = useAuth();
   const [result, setResult] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [testPlayOpen, setTestPlayOpen] = useState(false);
+  const [testPlayPayload, setTestPlayPayload] = useState(null);
   const [kept, setKept] = useState([]);
   const [keptLoading, setKeptLoading] = useState(false);
 
@@ -107,9 +110,6 @@ export default function LandingPage() {
             </button>
           ) : (
             <>
-              <a className="btn btn-ghost" href="#try">
-                Try free
-              </a>
               <Link className="btn btn-ghost" to="/login">
                 Log in
               </Link>
@@ -129,16 +129,13 @@ export default function LandingPage() {
             className="hero-logo"
           />
           <div className="hero-copy">
-            <h1>Find the cracks in your game rules.</h1>
+            <h1>Break your own rules.</h1>
             <p className="hero-sub">
-              Upload a rulebook, spot contradictions and loops, then accept or
-              refine suggested fixes before you ship.
+              Upload or paste your rules, find the holes, then get suggestions
+              instantly.
             </p>
             {!user ? (
               <div className="hero-ctas">
-                <a className="btn btn-primary btn-lg" href="#try">
-                  Try without an account
-                </a>
                 <Link className="btn btn-secondary btn-lg" to="/register">
                   Register
                 </Link>
@@ -148,38 +145,27 @@ export default function LandingPage() {
         </section>
 
         <section id="try" className="try-section">
-          <h2>Upload or paste your rules</h2>
-          <p className="hero-sub">
-            Get contradiction and clarity suggestions instantly. Guest analysis
-            is not written to the database until you click Keep.
-          </p>
-
           <RulesInput
             submitLabelUpload="Analyze file"
-            submitLabelPaste="Analyze pasted rules"
+            submitLabelPaste="Analyze text"
             submittingLabel="Analyzing…"
             onSubmit={onSubmit}
-            footer={
-              !user ? (
-                <p className="field-hint">
-                  Kept changes stay in this browser unless you{" "}
-                  <Link to="/register">create an account</Link>.
-                </p>
-              ) : (
-                <p className="field-hint">
-                  Kept changes are saved to your account. Rulebook files can also
-                  be stored in the <Link to="/app">app workspace</Link>.
-                </p>
-              )
-            }
+            onTestPlay={(payload) => {
+              setTestPlayPayload(payload);
+              setTestPlayOpen(true);
+            }}
+            showSampleDownload
           />
 
-          <KeptSuggestionsPanel
-            items={kept}
-            loading={keptLoading}
-            isGuest={!user}
-            onRemove={removeKept}
-          />
+          {kept.length > 0 || keptLoading ? (
+            <KeptSuggestionsPanel
+              items={kept}
+              loading={keptLoading}
+              isGuest={!user}
+              onRemove={removeKept}
+              hideIntro
+            />
+          ) : null}
         </section>
       </main>
 
@@ -188,6 +174,12 @@ export default function LandingPage() {
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         onKeptChange={refreshKept}
+      />
+
+      <TestPlayModal
+        open={testPlayOpen}
+        payload={testPlayPayload}
+        onClose={() => setTestPlayOpen(false)}
       />
     </div>
   );

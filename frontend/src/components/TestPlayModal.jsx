@@ -48,19 +48,13 @@ export default function TestPlayModal({ open, payload, onClose }) {
   useEffect(() => {
     if (!open) return undefined;
 
-    function onKeyDown(e) {
-      if (e.key === "Escape" && !running) onClose();
-    }
-
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    window.addEventListener("keydown", onKeyDown);
 
     return () => {
       document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", onKeyDown);
     };
-  }, [open, onClose, running]);
+  }, [open]);
 
   if (!open || !payload) return null;
 
@@ -95,13 +89,12 @@ export default function TestPlayModal({ open, payload, onClose }) {
   const warningIssues = (sanity?.issues || []).filter((issue) => issue.severity !== "blocking");
 
   return (
-    <div className="modal-root" role="presentation" onClick={running ? undefined : onClose}>
+    <div className="modal-root" role="presentation">
       <div
         className="modal-dialog modal-dialog-wide"
         role="dialog"
         aria-modal="true"
         aria-labelledby="test-play-modal-title"
-        onClick={(e) => e.stopPropagation()}
       >
         <div className="modal-header">
           <div>

@@ -18,6 +18,9 @@ export const ALLOWED_EXTENSIONS = new Set([
   ".text",
 ]);
 
+/** Formats accepted for rules upload / analyze on the landing page. */
+export const RULES_UPLOAD_EXTENSIONS = new Set([".pdf", ".doc", ".docx", ".txt"]);
+
 const ALLOWED_MIME_PREFIXES = ["text/"];
 const ALLOWED_MIME_TYPES = new Set([
   "application/pdf",
@@ -49,6 +52,19 @@ export function isAllowedFile(file) {
   if (ALLOWED_MIME_PREFIXES.some((p) => file.mimetype?.startsWith(p))) return true;
   if (ALLOWED_MIME_TYPES.has(file.mimetype)) return true;
   return false;
+}
+
+export function isRulesUploadFile(file) {
+  const ext = getExtension(file.originalname || file.name || "");
+  if (RULES_UPLOAD_EXTENSIONS.has(ext)) return true;
+
+  const mime = file.mimetype || "";
+  return (
+    mime === "application/pdf" ||
+    mime === "application/msword" ||
+    mime === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+    mime === "text/plain"
+  );
 }
 
 export function safeTitle(value, fallback = "Untitled rules") {

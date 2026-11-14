@@ -4,6 +4,7 @@ export default function SuggestionsList({
   statuses = {},
   onKeep,
   onDismiss,
+  onUndo,
   busyId = null,
 }) {
   if (!result) return null;
@@ -90,6 +91,19 @@ export default function SuggestionsList({
                         Dismiss
                       </button>
                     ) : null}
+                  </div>
+                ) : null}
+
+                {status !== "pending" && onUndo ? (
+                  <div className="suggestion-actions">
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      disabled={busyId === item.id}
+                      onClick={() => onUndo(item)}
+                    >
+                      {busyId === item.id ? "Undoing…" : "Undo"}
+                    </button>
                   </div>
                 ) : null}
               </li>

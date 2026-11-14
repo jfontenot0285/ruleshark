@@ -1,98 +1,99 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api.js";
 import { useAuth } from "../auth/AuthContext.jsx";
-import KeptSuggestionsPanel from "../components/KeptSuggestionsPanel.jsx";
+import DownloadRulesModal from "../components/DownloadRulesModal.jsx";
 import RulesInput from "../components/RulesInput.jsx";
+import SharkSwimLoader from "../components/SharkSwimLoader.jsx";
 import SuggestionsModal from "../components/SuggestionsModal.jsx";
 import TestPlayModal from "../components/TestPlayModal.jsx";
-import { loadGuestKept, removeGuestKept } from "../keptSuggestions.js";
+
+function analysisFingerprint({ mode, file, text }) {
+  if (mode === "upload" && file) {
+    return `upload:${file.name}:${file.size}:${file.lastModified}`;
+  }
+  if (mode === "paste" && String(text || "").trim()) {
+    return `paste:${String(text).trim()}`;
+  }
+  return null;
+}
 
 export default function LandingPage() {
-  const { user, token, logout } = useAuth();
+  const { user, logout } = useAuth();
   const [result, setResult] = useState(null);
+  const [resultFingerprint, setResultFingerprint] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [downloadPayload, setDownloadPayload] = useState(null);
+  const [downloadOpen, setDownloadOpen] = useState(false);
+  const [clearInputKey, setClearInputKey] = useState(0);
   const [testPlayOpen, setTestPlayOpen] = useState(false);
   const [testPlayPayload, setTestPlayPayload] = useState(null);
-  const [kept, setKept] = useState([]);
-  const [keptLoading, setKeptLoading] = useState(false);
 
-  const refreshKept = useCallback(async () => {
-    if (!token) {
-      setKept(loadGuestKept());
-      setKeptLoading(false);
-      return;
-    }
-
-    setKeptLoading(true);
-    try {
-      const data = await api("/api/suggestions/kept", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setKept(data.suggestions || []);
-    } catch {
-      setKept([]);
-    } finally {
-      setKeptLoading(false);
-    }
-  }, [token]);
-
-  useEffect(() => {
-    refreshKept();
-  }, [refreshKept]);
+  const canContinueAnalysis = useCallback(
+    (payload) => {
+      if (!result || !resultFingerprint) return false;
+      const next = analysisFingerprint(payload);
+      return Boolean(next && next === resultFingerprint);
+    },
+    [result, resultFingerprint]
+  );
 
   async function onSubmit({ mode, title, file, text }) {
-    setResult(null);
-    setModalOpen(false);
+    const fingerprint = analysisFingerprint({ mode, file, text });
 
-    if (mode === "upload") {
-      if (!file) throw new Error("Choose a file to upload.");
-      const body = new FormData();
-      body.append("file", file);
-      if (title) body.append("title", title);
-
-      const data = await api("/api/analyze/upload", {
-        method: "POST",
-        body,
-      });
-      setResult(data);
+    if (result && fingerprint && fingerprint === resultFingerprint) {
       setModalOpen(true);
       return {
-        successMessage: `Analyzed “${data.title}” without saving.`,
         clearTitle: false,
         reset: false,
       };
     }
 
-    if (!text.trim()) throw new Error("Paste some rules text before submitting.");
+    setResult(null);
+    setResultFingerprint(null);
+    setModalOpen(false);
+    setAnalyzing(true);
 
-    const data = await api("/api/analyze/paste", {
-      method: "POST",
-      body: JSON.stringify({
-        text,
-        title: title || undefined,
-      }),
-    });
-    setResult(data);
-    setModalOpen(true);
-    return {
-      successMessage: `Analyzed “${data.title}” without saving.`,
-      clearTitle: false,
-      reset: false,
-    };
-  }
+    try {
+      if (mode === "upload") {
+        if (!file) throw new Error("Choose a file to upload.");
+        const body = new FormData();
+        body.append("file", file);
+        if (title) body.append("title", title);
 
-  async function removeKept(id) {
-    if (token) {
-      await api(`/api/suggestions/kept/${id}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
+        const data = await api("/api/analyze/upload", {
+          method: "POST",
+          body,
+        });
+        setResult(data);
+        setResultFingerprint(fingerprint);
+        setModalOpen(true);
+        return {
+          clearTitle: false,
+          reset: false,
+        };
+      }
+
+      if (!text.trim()) throw new Error("Paste some rules text before submitting.");
+
+      const data = await api("/api/analyze/paste", {
+        method: "POST",
+        body: JSON.stringify({
+          text,
+          title: title || undefined,
+        }),
       });
-      await refreshKept();
-      return;
+      setResult(data);
+      setResultFingerprint(fingerprint);
+      setModalOpen(true);
+      return {
+        clearTitle: false,
+        reset: false,
+      };
+    } finally {
+      setAnalyzing(false);
     }
-
-    setKept(removeGuestKept(id));
   }
 
   return (
@@ -141,32 +142,62 @@ export default function LandingPage() {
           <RulesInput
             submitLabelUpload="Analyze file"
             submitLabelPaste="Analyze text"
+            continueLabel="Continue analysis"
             submittingLabel="Analyzing…"
             onSubmit={onSubmit}
+            canContinueAnalysis={canContinueAnalysis}
             onTestPlay={(payload) => {
               setTestPlayPayload(payload);
               setTestPlayOpen(true);
             }}
             showSampleDownload
+            clearInputKey={clearInputKey}
           />
-
-          {kept.length > 0 || keptLoading ? (
-            <KeptSuggestionsPanel
-              items={kept}
-              loading={keptLoading}
-              isGuest={!user}
-              onRemove={removeKept}
-              hideIntro
-            />
-          ) : null}
         </section>
       </main>
+
+      {analyzing ? (
+        <div className="modal-root" role="presentation">
+          <div
+            className="modal-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="analyze-loader-title"
+          >
+            <div className="modal-header">
+              <div>
+                <h2 id="analyze-loader-title">Analyzing rules</h2>
+                <p className="muted modal-subtitle">
+                  RuleShark is hunting for holes in your ruleset.
+                </p>
+              </div>
+            </div>
+            <div className="modal-body">
+              <SharkSwimLoader count={2} label="Analyzing rules…" />
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <SuggestionsModal
         result={result}
         open={modalOpen}
         onClose={() => setModalOpen(false)}
-        onKeptChange={refreshKept}
+        onSaveComplete={(payload) => {
+          setDownloadPayload(payload);
+          setDownloadOpen(true);
+        }}
+      />
+
+      <DownloadRulesModal
+        open={downloadOpen}
+        payload={downloadPayload}
+        onClose={() => setDownloadOpen(false)}
+        onDownloaded={() => {
+          setClearInputKey((key) => key + 1);
+          setResult(null);
+          setResultFingerprint(null);
+        }}
       />
 
       <TestPlayModal

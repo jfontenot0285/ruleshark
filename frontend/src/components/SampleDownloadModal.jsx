@@ -25,19 +25,13 @@ export default function SampleDownloadModal({ open, onClose, onChosen }) {
   useEffect(() => {
     if (!open) return undefined;
 
-    function onKeyDown(e) {
-      if (e.key === "Escape") onClose();
-    }
-
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    window.addEventListener("keydown", onKeyDown);
 
     return () => {
       document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", onKeyDown);
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 
@@ -68,13 +62,12 @@ export default function SampleDownloadModal({ open, onClose, onChosen }) {
   }
 
   return (
-    <div className="modal-root" role="presentation" onClick={onClose}>
+    <div className="modal-root" role="presentation">
       <div
         className="modal-dialog"
         role="dialog"
         aria-modal="true"
         aria-labelledby="sample-download-title"
-        onClick={(e) => e.stopPropagation()}
       >
         <div className="modal-header">
           <div>

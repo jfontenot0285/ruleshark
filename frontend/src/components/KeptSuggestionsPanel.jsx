@@ -42,30 +42,6 @@ export default function KeptSuggestionsPanel({
                   {item.sourceTitle || item.sourceName || "Untitled source"}
                 </span>
                 <p className="kept-rationale">{item.rationale}</p>
-                {item.diff?.unified ? (
-                  <div className="diff-block">
-                    <pre className="diff-pre">
-                      {item.diff.unified
-                        .split("\n")
-                        .filter(Boolean)
-                        .map((line, idx) => (
-                          <span
-                            key={`${item.id}-${idx}`}
-                            className={
-                              line.startsWith("+")
-                                ? "diff-add"
-                                : line.startsWith("-")
-                                  ? "diff-del"
-                                  : undefined
-                            }
-                          >
-                            {line}
-                            {"\n"}
-                          </span>
-                        ))}
-                    </pre>
-                  </div>
-                ) : null}
               </div>
               <div className="kept-item-actions">
                 {onRemove ? (

@@ -32,3 +32,9 @@ export function removeGuestKept(id) {
   saveGuestKept(next);
   return next;
 }
+
+export function removeGuestKeptBySuggestionId(suggestionId) {
+  const next = loadGuestKept().filter((entry) => entry.suggestionId !== suggestionId);
+  saveGuestKept(next);
+  return next;
+}

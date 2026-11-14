@@ -136,7 +136,10 @@ export default function LandingPage() {
             </p>
             {!user ? (
               <div className="hero-ctas">
-                <Link className="btn btn-secondary btn-lg" to="/register">
+                <Link className="btn btn-secondary btn-lg" to="/login">
+                  Log in
+                </Link>
+                <Link className="btn btn-primary btn-lg" to="/register">
                   Register
                 </Link>
               </div>

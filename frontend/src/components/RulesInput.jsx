@@ -1,4 +1,5 @@
 import { useState } from "react";
+import SampleDownloadModal from "./SampleDownloadModal.jsx";
 
 const ACCEPT =
   ".pdf,.doc,.docx,.txt,.md,.markdown,.rtf,.csv,.tsv,.json,.xml,.html,.htm,text/*";
@@ -8,9 +9,6 @@ function formatBytes(bytes) {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
-
-const SAMPLE_FILE_HREF = "/samples/two-player-card-game-rules.txt";
-const SAMPLE_FILE_NAME = "two-player-card-game-rules.txt";
 
 export default function RulesInput({
   submitLabelUpload = "Upload & save",
@@ -30,6 +28,7 @@ export default function RulesInput({
   const [success, setSuccess] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const [sampleModalOpen, setSampleModalOpen] = useState(false);
 
   function assignFile(nextFile) {
     setFile(nextFile || null);
@@ -121,13 +120,13 @@ export default function RulesInput({
         </div>
 
         {showSampleDownload ? (
-          <a
+          <button
+            type="button"
             className="btn btn-secondary sample-download"
-            href={SAMPLE_FILE_HREF}
-            download={SAMPLE_FILE_NAME}
+            onClick={() => setSampleModalOpen(true)}
           >
             Download sample file
-          </a>
+          </button>
         ) : null}
       </div>
 
@@ -228,6 +227,28 @@ export default function RulesInput({
 
         {footer}
       </form>
+
+      {showSampleDownload ? (
+        <SampleDownloadModal
+          open={sampleModalOpen}
+          onClose={() => setSampleModalOpen(false)}
+          onChosen={({ sample, file: sampleFile, error: sampleError }) => {
+            if (sampleError) {
+              setError(sampleError);
+              return;
+            }
+            if (!sampleFile) return;
+            setMode("upload");
+            assignFile(sampleFile);
+            setTitle(sample.filename.replace(/\.txt$/i, ""));
+            setSuccess(
+              sample.id === "clean"
+                ? "Clean sample loaded — ready for Test play."
+                : "Issue-filled sample loaded — ready to Analyze."
+            );
+          }}
+        />
+      ) : null}
     </>
   );
 }

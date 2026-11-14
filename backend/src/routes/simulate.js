@@ -8,6 +8,7 @@ import {
   upload,
 } from "../lib/uploads.js";
 import { extractTextFromBuffer } from "../services/extractText.js";
+import { sanityCheckRules } from "../services/sanityCheck.js";
 import { runSimulation } from "../services/simulation.js";
 
 const router = Router();
@@ -20,6 +21,58 @@ function parsePlayerCount(value) {
     throw err;
   }
   return count;
+}
+
+async function resolveRulesPayload(req) {
+  const playerCount = parsePlayerCount(req.body?.playerCount ?? req.query?.playerCount);
+
+  if (req.file) {
+    if (!isAllowedFile(req.file)) {
+      const err = new Error("Unsupported file type. Use PDF, Word, or a text-based file.");
+      err.status = 400;
+      throw err;
+    }
+
+    const extension = getExtension(req.file.originalname);
+    const title =
+      safeTitle(req.body?.title, "") ||
+      path.basename(req.file.originalname, extension) ||
+      "Untitled rules";
+
+    const extracted = await extractTextFromBuffer({
+      buffer: req.file.buffer,
+      originalName: req.file.originalname,
+      mimeType: req.file.mimetype,
+    });
+
+    return {
+      text: extracted.text,
+      title,
+      originalName: req.file.originalname,
+      source: "upload",
+      playerCount,
+      truncated: extracted.truncated,
+    };
+  }
+
+  const text = String(req.body?.text ?? "");
+  if (!text.trim()) {
+    const err = new Error(
+      "Provide pasted rules text or upload a rules file before simulating."
+    );
+    err.status = 400;
+    throw err;
+  }
+
+  const title = safeTitle(req.body?.title, "Pasted rules");
+  return {
+    text,
+    title,
+    originalName: `${title}.txt`,
+    source: "paste",
+    playerCount,
+    truncated: false,
+  };
 }
 
 async function handleSimulate({ text, title, originalName, source, playerCount }) {
@@ -39,57 +92,41 @@ async function handleSimulate({ text, title, originalName, source, playerCount }
   };
 }
 
+router.post("/check", upload.single("file"), async (req, res) => {
+  try {
+    const resolved = await resolveRulesPayload(req);
+    const sanity = await sanityCheckRules(resolved.text, resolved.playerCount);
+    return res.json({
+      persisted: false,
+      source: resolved.source,
+      title: resolved.title,
+      originalName: resolved.originalName,
+      playerCount: resolved.playerCount,
+      truncated: resolved.truncated,
+      started: false,
+      sanity,
+      simulation: null,
+    });
+  } catch (err) {
+    console.error("Simulate check failed:", err);
+    return res.status(err.status || 500).json({
+      error: err.message || "Sanity check failed.",
+    });
+  }
+});
+
 router.post("/run", upload.single("file"), async (req, res) => {
   try {
-    const playerCount = parsePlayerCount(req.body?.playerCount ?? req.query?.playerCount);
-
-    if (req.file) {
-      if (!isAllowedFile(req.file)) {
-        return res.status(400).json({
-          error: "Unsupported file type. Use PDF, Word, or a text-based file.",
-        });
-      }
-
-      const extension = getExtension(req.file.originalname);
-      const title =
-        safeTitle(req.body?.title, "") ||
-        path.basename(req.file.originalname, extension) ||
-        "Untitled rules";
-
-      const extracted = await extractTextFromBuffer({
-        buffer: req.file.buffer,
-        originalName: req.file.originalname,
-        mimeType: req.file.mimetype,
-      });
-
-      const payload = await handleSimulate({
-        text: extracted.text,
-        title,
-        originalName: req.file.originalname,
-        source: "upload",
-        playerCount,
-      });
-
-      return res.json({ ...payload, truncated: extracted.truncated });
-    }
-
-    const text = String(req.body?.text ?? "");
-    if (!text.trim()) {
-      return res.status(400).json({
-        error: "Provide pasted rules text or upload a rules file before simulating.",
-      });
-    }
-
-    const title = safeTitle(req.body?.title, "Pasted rules");
+    const resolved = await resolveRulesPayload(req);
     const payload = await handleSimulate({
-      text,
-      title,
-      originalName: `${title}.txt`,
-      source: "paste",
-      playerCount,
+      text: resolved.text,
+      title: resolved.title,
+      originalName: resolved.originalName,
+      source: resolved.source,
+      playerCount: resolved.playerCount,
     });
 
-    return res.json(payload);
+    return res.json({ ...payload, truncated: resolved.truncated });
   } catch (err) {
     console.error("Simulate failed:", err);
     return res.status(err.status || 500).json({

@@ -134,16 +134,6 @@ export default function LandingPage() {
               Upload or paste your rules, find the holes, then get suggestions
               instantly.
             </p>
-            {!user ? (
-              <div className="hero-ctas">
-                <Link className="btn btn-secondary btn-lg" to="/login">
-                  Log in
-                </Link>
-                <Link className="btn btn-primary btn-lg" to="/register">
-                  Register
-                </Link>
-              </div>
-            ) : null}
           </div>
         </section>
 

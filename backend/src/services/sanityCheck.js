@@ -54,6 +54,108 @@ function hasEndCondition(rulesText) {
   return patterns.some((p) => p.test(text));
 }
 
+function findInfiniteLoopSignals(rulesText) {
+  const text = rulesText.toLowerCase();
+  const findings = [];
+
+  const patterns = [
+    [
+      /must attack again(?:\s+immediately)?|attack again immediately/,
+      "Rules force another attack immediately after attacking, which can loop forever.",
+    ],
+    [
+      /repeat(?:s|ing)? (?:this|the) (?:step|action|turn) (?:forever|indefinitely|until forever)/,
+      "Rules describe repeating a step indefinitely with no exit.",
+    ],
+    [
+      /(?:continue|keep) (?:playing|attacking|drawing) (?:forever|indefinitely)/,
+      "Rules say play continues forever or indefinitely.",
+    ],
+    [
+      /no (?:maximum|max|limit) (?:number of )?turns/,
+      "Rules explicitly disallow a turn limit without another hard stop.",
+    ],
+  ];
+
+  for (const [pattern, message] of patterns) {
+    const match = text.match(pattern);
+    if (match) {
+      findings.push({ excerpt: match[0], message });
+      break;
+    }
+  }
+
+  return findings;
+}
+
+function findNoProgressSignals(rulesText) {
+  const text = rulesText.toLowerCase();
+  const findings = [];
+
+  const mentionsDrawPile =
+    /\bdraw pile\b/.test(text) || /\bdeck\b/.test(text);
+  const hasReshuffle =
+    /\breshuffle\b/.test(text) ||
+    /\bshuffle .+ discard\b/.test(text) ||
+    /\bnew draw pile\b/.test(text);
+  const emptyDrawMentions =
+    /draw pile runs out|deck is empty|no cards left to draw|draw pile is empty/.test(
+      text
+    );
+  const emptyDrawBlocksPlay =
+    /(?:if|when) (?:the )?(?:draw pile|deck) (?:is empty|runs out)[\s\S]{0,120}(?:game ends? with no winner|cannot (?:draw|play|continue)|play stops|stuck)/.test(
+      text
+    );
+
+  if (mentionsDrawPile && emptyDrawMentions && !hasReshuffle) {
+    findings.push({
+      message:
+        "Draw pile can empty with no reshuffle or alternate progress rule, so play can stall.",
+    });
+  }
+
+  if (emptyDrawBlocksPlay && !hasReshuffle) {
+    findings.push({
+      message:
+        "Rules leave players with no legal action when the draw pile is empty.",
+    });
+  }
+
+  if (
+    /cannot (?:pass|skip|end (?:your|the) turn)/.test(text) &&
+    /must (?:play|attack|draw)/.test(text) &&
+    !/if you cannot play/.test(text)
+  ) {
+    findings.push({
+      message:
+        "Players appear required to act with no pass option, which can stall if no legal move exists.",
+    });
+  }
+
+  return findings;
+}
+
+function findConflictingEndSignals(rulesText) {
+  const text = rulesText.toLowerCase();
+  const bothZero = /both players reach 0 life on the same attack/g;
+  const matches = text.match(bothZero);
+  if (matches && matches.length >= 2) {
+    const saysWin = /same attack, the player who attacked wins/.test(text);
+    const saysDraw = /same attack, the game is a draw/.test(text);
+    if (saysWin && saysDraw) {
+      return [
+        {
+          severity: "warning",
+          code: "conflicting_end_condition",
+          message:
+            "Rules give two different outcomes when both players hit 0 life on the same attack (win vs draw).",
+        },
+      ];
+    }
+  }
+  return [];
+}
+
 export function mockSanityCheck(rulesText, playerCount) {
   const issues = [];
   const hints = findPlayerCountHints(rulesText);
@@ -76,6 +178,36 @@ export function mockSanityCheck(rulesText, playerCount) {
     });
   }
 
+  for (const finding of findInfiniteLoopSignals(rulesText)) {
+    issues.push({
+      code: "infinite_loop",
+      severity: "blocking",
+      message: finding.message,
+    });
+  }
+
+  for (const finding of findNoProgressSignals(rulesText)) {
+    issues.push({
+      code: "no_progress",
+      severity: "blocking",
+      message: finding.message,
+    });
+  }
+
+  if (
+    /\b(?:never ends?|endless|unbounded|no turn limit)\b/i.test(rulesText) &&
+    !endOk
+  ) {
+    issues.push({
+      code: "unbounded_length",
+      severity: "blocking",
+      message:
+        "Rules suggest play can continue without a hard stop, so a simulation may run too long.",
+    });
+  }
+
+  issues.push(...findConflictingEndSignals(rulesText));
+
   for (const hint of hints) {
     if (hint.kind === "exact" && hint.count !== playerCount) {
       issues.push({
@@ -93,7 +225,6 @@ export function mockSanityCheck(rulesText, playerCount) {
     }
   }
 
-  // Sample / common two-player title without other range
   if (
     /two-player|2-player|for two players/i.test(rulesText) &&
     playerCount !== 2 &&
@@ -106,7 +237,8 @@ export function mockSanityCheck(rulesText, playerCount) {
     });
   }
 
-  const ok = issues.filter((i) => i.severity === "blocking").length === 0;
+  const blocking = issues.filter((i) => i.severity === "blocking");
+  const ok = blocking.length === 0;
 
   return {
     ok,
@@ -115,8 +247,8 @@ export function mockSanityCheck(rulesText, playerCount) {
     playerCountHints: hints,
     issues,
     summary: ok
-      ? `Sanity check passed for ${playerCount} players. End condition detected.`
-      : `Sanity check failed for ${playerCount} players. Fix the issues below before simulating.`,
+      ? `Sanity check passed for ${playerCount} players. Safe to simulate.`
+      : `Simulation blocked for ${playerCount} players. Fix the issues below before running Test play.`,
     mocked: true,
   };
 }
@@ -141,8 +273,13 @@ export async function sanityCheckRules(rulesText, playerCount) {
     messages: [
       {
         role: "system",
-        content:
-          "You validate tabletop/card game rules before a multi-agent simulation. Decide if the rules support the requested player count and include a real end/win condition. Be strict about mismatches.",
+        content: [
+          "You validate tabletop/card game rules before a multi-agent simulation.",
+          "Block the simulation when the game may never end, loop forever, stall with no legal progress, lack a real win/end condition, or when player count does not match the rules.",
+          "Use severity \"blocking\" for those cases. Use \"warning\" only for clarity problems that still allow a finite game.",
+          "Prefer specific issue codes: missing_end_condition, infinite_loop, no_progress, unbounded_length, player_count_mismatch, player_count_out_of_range, conflicting_end_condition.",
+          "Set ok=false if any blocking issue exists.",
+        ].join(" "),
       },
       {
         role: "user",
@@ -182,13 +319,21 @@ export async function sanityCheckRules(rulesText, playerCount) {
   });
 
   const parsed = JSON.parse(completion.choices?.[0]?.message?.content || "{}");
+  const issues = parsed.issues || [];
+  const ok =
+    Boolean(parsed.ok) && !issues.some((issue) => issue.severity === "blocking");
+
   return {
-    ok: Boolean(parsed.ok),
+    ok,
     playerCount: count,
     hasEndCondition: Boolean(parsed.hasEndCondition),
     playerCountHints: findPlayerCountHints(rulesText),
-    issues: parsed.issues || [],
-    summary: parsed.summary || "",
+    issues,
+    summary:
+      parsed.summary ||
+      (ok
+        ? `Sanity check passed for ${count} players.`
+        : `Simulation blocked for ${count} players.`),
     mocked: false,
   };
 }

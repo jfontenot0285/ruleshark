@@ -2,16 +2,44 @@ import { useEffect, useState } from "react";
 import { api } from "../api.js";
 import SharkSwimLoader from "./SharkSwimLoader.jsx";
 
+async function postSimulate(path, payload, playerCount) {
+  if (payload.mode === "upload") {
+    if (!payload.file) {
+      throw new Error("Choose a rules file before starting the simulation.");
+    }
+    const body = new FormData();
+    body.append("file", payload.file);
+    body.append("playerCount", String(playerCount));
+    if (payload.title) body.append("title", payload.title);
+    return api(path, { method: "POST", body });
+  }
+
+  if (!payload.text?.trim()) {
+    throw new Error("Paste rules text before starting the simulation.");
+  }
+
+  return api(path, {
+    method: "POST",
+    body: JSON.stringify({
+      text: payload.text,
+      title: payload.title || undefined,
+      playerCount,
+    }),
+  });
+}
+
 export default function TestPlayModal({ open, payload, onClose }) {
   const [playerCount, setPlayerCount] = useState(2);
-  const [running, setRunning] = useState(false);
+  const [phase, setPhase] = useState("idle");
   const [error, setError] = useState("");
   const [result, setResult] = useState(null);
+
+  const running = phase === "checking" || phase === "simulating";
 
   useEffect(() => {
     if (open) {
       setPlayerCount(2);
-      setRunning(false);
+      setPhase("idle");
       setError("");
       setResult(null);
     }
@@ -39,49 +67,32 @@ export default function TestPlayModal({ open, payload, onClose }) {
   async function beginSimulation() {
     setError("");
     setResult(null);
-    setRunning(true);
+    setPhase("checking");
 
     try {
-      let data;
+      const sanityResult = await postSimulate("/api/simulate/check", payload, playerCount);
+      setResult(sanityResult);
 
-      if (payload.mode === "upload") {
-        if (!payload.file) {
-          throw new Error("Choose a rules file before starting the simulation.");
-        }
-        const body = new FormData();
-        body.append("file", payload.file);
-        body.append("playerCount", String(playerCount));
-        if (payload.title) body.append("title", payload.title);
-
-        data = await api("/api/simulate/run", {
-          method: "POST",
-          body,
-        });
-      } else {
-        if (!payload.text?.trim()) {
-          throw new Error("Paste rules text before starting the simulation.");
-        }
-        data = await api("/api/simulate/run", {
-          method: "POST",
-          body: JSON.stringify({
-            text: payload.text,
-            title: payload.title || undefined,
-            playerCount,
-          }),
-        });
+      if (!sanityResult?.sanity?.ok) {
+        setPhase("idle");
+        return;
       }
 
-      setResult(data);
+      setPhase("simulating");
+      const runResult = await postSimulate("/api/simulate/run", payload, playerCount);
+      setResult(runResult);
     } catch (err) {
       setError(err.message || "Simulation failed.");
     } finally {
-      setRunning(false);
+      setPhase("idle");
     }
   }
 
   const sanity = result?.sanity;
   const simulation = result?.simulation;
-  const blocked = result && !result.started;
+  const blocked = Boolean(sanity && !sanity.ok);
+  const blockingIssues = (sanity?.issues || []).filter((issue) => issue.severity === "blocking");
+  const warningIssues = (sanity?.issues || []).filter((issue) => issue.severity !== "blocking");
 
   return (
     <div className="modal-root" role="presentation" onClick={running ? undefined : onClose}>
@@ -114,7 +125,11 @@ export default function TestPlayModal({ open, payload, onClose }) {
           {running ? (
             <SharkSwimLoader
               count={playerCount}
-              label={`Agents are in the water… ${playerCount} player${playerCount === 1 ? "" : "s"} simulating`}
+              label={
+                phase === "checking"
+                  ? "Checking rules for loops and missing end conditions…"
+                  : `Agents are in the water… ${playerCount} player${playerCount === 1 ? "" : "s"} simulating`
+              }
             />
           ) : (
             <>
@@ -147,24 +162,42 @@ export default function TestPlayModal({ open, payload, onClose }) {
               {error ? <p className="form-error">{error}</p> : null}
 
               {sanity ? (
-                <section className={`sim-sanity ${sanity.ok ? "is-ok" : "is-blocked"}`}>
-                  <h3>Sanity check</h3>
+                <section className={`sim-sanity ${blocked ? "is-blocked" : "is-ok"}`}>
+                  <h3>{blocked ? "Simulation blocked" : "Sanity check"}</h3>
                   <p>{sanity.summary}</p>
-                  {sanity.issues?.length ? (
-                    <ul className="sim-issue-list">
-                      {sanity.issues.map((issue, idx) => (
-                        <li key={`${issue.code}-${idx}`}>
-                          <strong>{issue.severity}</strong>: {issue.message}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
+
+                  {blockingIssues.length ? (
+                    <>
+                      <h4>Blocking issues</h4>
+                      <ul className="sim-issue-list">
+                        {blockingIssues.map((issue, idx) => (
+                          <li key={`${issue.code}-${idx}`}>
+                            <strong>{issue.code}</strong>: {issue.message}
+                          </li>
+                        ))}
+                      </ul>
+                      <p className="form-error">
+                        Fix these issues in your rules (or use the clean sample) before Test play
+                        can run.
+                      </p>
+                    </>
+                  ) : null}
+
+                  {warningIssues.length ? (
+                    <>
+                      <h4>Warnings</h4>
+                      <ul className="sim-issue-list">
+                        {warningIssues.map((issue, idx) => (
+                          <li key={`${issue.code}-warn-${idx}`}>
+                            <strong>{issue.code}</strong>: {issue.message}
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  ) : null}
+
+                  {!blockingIssues.length && !warningIssues.length ? (
                     <p className="muted">No blocking issues found.</p>
-                  )}
-                  {blocked ? (
-                    <p className="form-error">
-                      Simulation was not started. Adjust player count or rules, then try again.
-                    </p>
                   ) : null}
                 </section>
               ) : null}

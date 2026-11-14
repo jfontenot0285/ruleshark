@@ -2,6 +2,11 @@ import OpenAI from "openai";
 import { config } from "../config.js";
 import { sanityCheckRules } from "./sanityCheck.js";
 
+/** Hard stop so simulations cannot run unbounded even if rules are weak. */
+export function maxSimulationTurns(playerCount) {
+  return Math.max(24, Number(playerCount) * 12);
+}
+
 class PlayerAgent {
   constructor(seat, playerCount) {
     this.id = `player-${seat}`;
@@ -157,7 +162,7 @@ export async function runMockSimulation({ rulesText, playerCount, title }) {
     });
   });
 
-  const maxTurns = playerCount * 12;
+  const maxTurns = maxSimulationTurns(playerCount);
   let turn = 0;
   let result = null;
 
@@ -247,14 +252,18 @@ async function runLlmSimulation({ rulesText, playerCount, title }) {
     messages: [
       {
         role: "system",
-        content:
-          "You simulate a short multi-agent playtest. One referee and N player agents take turns under the rules. Return a compact structured transcript with a winner or draw and clear end reason.",
+        content: [
+          "You simulate a short multi-agent playtest.",
+          "One referee and N player agents take turns under the rules.",
+          "Return a compact structured transcript with a winner or draw and clear end reason.",
+          "Never exceed the turn cap. If the cap is hit, end the game and say the turn limit was reached.",
+        ].join(" "),
       },
       {
         role: "user",
         content: `Title: ${title || "Untitled"}\nPlayers: ${playerCount}\nAgents: ${agents
           .map((a) => a.name)
-          .join(", ")}\n\nRules:\n---\n${rulesText}\n---\nSimulate up to ${playerCount * 8} turns.`,
+          .join(", ")}\n\nRules:\n---\n${rulesText}\n---\nSimulate up to ${maxSimulationTurns(playerCount)} turns. Stop earlier if someone wins.`,
       },
     ],
     response_format: {

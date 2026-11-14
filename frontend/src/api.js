@@ -1,3 +1,5 @@
+// Same-origin by default so Vercel top-level rewrites can send /api/* to the
+// backend service. Set VITE_API_URL only when the API is on a different origin.
 const API_BASE = import.meta.env.VITE_API_URL || "";
 
 export async function api(path, options = {}) {

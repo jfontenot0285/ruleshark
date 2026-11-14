@@ -14,11 +14,22 @@ const mongoUri =
     ? `mongodb+srv://${process.env.MONGODB_USERNAME}:${process.env.MONGODB_PASSWORD}@cluster0.cqr2jzq.mongodb.net/ruleshark`
     : "");
 
+function resolveClientOrigin() {
+  const raw = process.env.CLIENT_ORIGIN;
+  if (!raw) {
+    // Reflect request Origin when unset (works for Vercel same-project previews).
+    return true;
+  }
+  if (raw === "*") return true;
+  const list = raw.split(",").map((s) => s.trim()).filter(Boolean);
+  return list.length <= 1 ? list[0] || true : list;
+}
+
 export const config = {
   port: Number(process.env.PORT) || 4000,
   mongoUri: ensureDbName(mongoUri),
   jwtSecret: process.env.JWT_SECRET || "ruleshark-dev-secret-change-me",
-  clientOrigin: process.env.CLIENT_ORIGIN || "http://localhost:5173",
+  clientOrigin: resolveClientOrigin(),
   openaiApiKey: process.env.OPENAI_API_KEY || "",
   openaiModel: process.env.OPENAI_MODEL || "gpt-4o-mini",
   // Default to mock analysis when no API key is set so local UI testing works.

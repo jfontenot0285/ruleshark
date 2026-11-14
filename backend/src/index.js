@@ -38,11 +38,16 @@ app.use((err, _req, res, _next) => {
 
 await connectDb();
 
-app.listen(config.port, () => {
-  console.log(`RuleShark API listening on http://localhost:${config.port}`);
-  console.log(
-    `LLM mode: ${config.mockAnalyze ? "mock" : "OpenAI"} (${config.openaiModel})${
-      config.openaiApiKey ? "" : " — no OPENAI_API_KEY"
-    }`
-  );
-});
+// Vercel Fluid / Express entry: export the app. Local `npm start` still listens.
+if (!process.env.VERCEL) {
+  app.listen(config.port, () => {
+    console.log(`RuleShark API listening on http://localhost:${config.port}`);
+    console.log(
+      `LLM mode: ${config.mockAnalyze ? "mock" : "OpenAI"} (${config.openaiModel})${
+        config.openaiApiKey ? "" : " — no OPENAI_API_KEY"
+      }`
+    );
+  });
+}
+
+export default app;

@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { config } from "../config.js";
+import { recordTokensFromOpenAIUsage } from "./ipUsage.js";
 
 function findPlayerCountHints(rulesText) {
   const text = rulesText.toLowerCase();
@@ -317,6 +318,8 @@ export async function sanityCheckRules(rulesText, playerCount) {
       },
     },
   });
+
+  recordTokensFromOpenAIUsage(completion.usage);
 
   const parsed = JSON.parse(completion.choices?.[0]?.message?.content || "{}");
   const issues = parsed.issues || [];

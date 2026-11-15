@@ -145,8 +145,46 @@ Without `OPENAI_API_KEY`, set `MOCK_ANALYZE=true` (or leave the key empty — mo
 |--------|------|--------|
 | GET | `/api/health` | Liveness |
 | POST | `/api/analyze/upload`, `/api/analyze/paste` | Analyze rules |
-| POST | `/api/analyze/validate` | Preflight upload check |
-| POST | `/api/simulate` | Sanity check + Test play |
+| POST | `/api/analyze/validate` | Preflight upload check (not rate-limited) |
+| POST | `/api/simulate/check`, `/api/simulate/run` | Sanity check + Test play |
+
+## Rate limits (aligned with ~$20/mo OpenAI)
+
+`gpt-4o-mini` is about **$0.15 / 1M input** and **$0.60 / 1M output** tokens. A **$20** hard cap is roughly **33M tokens** (all output) to **133M tokens** (all input). RuleShark uses a conservative **~40M tokens / 30 days** app budget.
+
+### What is limited
+
+| Route | Limited? |
+|-------|----------|
+| `POST /api/analyze/upload`, `/paste` | Yes |
+| `POST /api/simulate/check`, `/run` | Yes |
+| `POST /api/analyze/validate` | No (no OpenAI call) |
+| `GET /api/health` | No |
+
+### Defaults
+
+| Limit | Default | Why |
+|--------|---------|-----|
+| Per IP requests | **5 / hour** | Stops spam without blocking normal use |
+| Per IP tokens | **40,000 / hour** | One IP saturating ≈ **28.8M tokens/mo** — under the 33M floor |
+| Global tokens | **40,000,000 / 30 days** | Shared ceiling ≈ conservative $20 mix |
+
+### Behavior
+
+- Over limit → HTTP **429** with a clear error (`Retry-After: 3600` on IP limits).
+- Token usage is taken from OpenAI’s `usage` field after each real call (prompt + completion).
+- Counters are **in-memory** (reset on process restart; **not** shared across multiple Vercel instances).
+- Keep the OpenAI dashboard **$20 hard limit** as the real billing backstop.
+- Soft input cap: `MAX_ANALYZE_CHARS` = 40,000 characters per analysis.
+
+Env overrides: `LLM_RATE_LIMIT_REQUESTS`, `LLM_RATE_LIMIT_TOKENS`, `LLM_RATE_LIMIT_WINDOW_MS`, `LLM_GLOBAL_TOKEN_BUDGET`, `LLM_GLOBAL_TOKEN_WINDOW_MS`.
+
+A fuller write-up (architecture, libraries, tradeoffs) is in:
+
+- [`docs/RuleShark-Overview.md`](docs/RuleShark-Overview.md)
+- [`docs/RuleShark-Overview.pdf`](docs/RuleShark-Overview.pdf)
+
+Regenerate the PDF after doc edits: `node docs/build-overview-pdf.mjs`
 
 ## Deploy (Vercel)
 
@@ -155,6 +193,7 @@ Without `OPENAI_API_KEY`, set `MOCK_ANALYZE=true` (or leave the key empty — mo
 - `OPENAI_API_KEY` / `OPENAI_MODEL`
 - `CLIENT_ORIGIN` (your deployment URL), or leave unset to reflect the request Origin
 - `MOCK_ANALYZE=false` for real LLM calls
+- Optional rate-limit env vars above
 
 ## Sample rules
 

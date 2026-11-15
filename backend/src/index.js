@@ -6,6 +6,9 @@ import simulateRoutes from "./routes/simulate.js";
 
 const app = express();
 
+// Needed so req.ip / X-Forwarded-For work behind Vercel or other proxies.
+app.set("trust proxy", 1);
+
 app.use(
   cors({
     origin: config.clientOrigin,
@@ -15,7 +18,15 @@ app.use(
 app.use(express.json({ limit: "2mb" }));
 
 app.get("/api/health", (_req, res) => {
-  res.json({ ok: true, service: "ruleshark-api" });
+  res.json({
+    ok: true,
+    service: "ruleshark-api",
+    rateLimit: {
+      requestsPerHourPerIp: config.llmRateLimitRequests,
+      tokensPerHourPerIp: config.llmRateLimitTokens,
+      globalTokensPerMonth: config.llmGlobalTokenBudget,
+    },
+  });
 });
 
 app.use("/api/analyze", analyzeRoutes);
@@ -39,6 +50,9 @@ if (!process.env.VERCEL) {
       `LLM mode: ${config.mockAnalyze ? "mock" : "OpenAI"} (${config.openaiModel})${
         config.openaiApiKey ? "" : " — no OPENAI_API_KEY"
       }`
+    );
+    console.log(
+      `LLM limits: ${config.llmRateLimitRequests} req/h/IP, ${config.llmRateLimitTokens} tok/h/IP, ${config.llmGlobalTokenBudget} tok/30d global`
     );
   });
 }

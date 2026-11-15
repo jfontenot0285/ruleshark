@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>RuleShark Overview</title>
+  <style>
+    body {
+      font-family: "Segoe UI", Helvetica, Arial, sans-serif;
+      font-size: 11pt;
+      line-height: 1.45;
+      color: #111;
+      max-width: 800px;
+      margin: 24px auto;
+      padding: 0 16px;
+    }
+    h1 { font-size: 22pt; border-bottom: 2px solid #0b3d5c; padding-bottom: 8px; }
+    h2 { font-size: 14pt; margin-top: 1.4em; color: #0b3d5c; }
+    h3 { font-size: 12pt; }
+    code, pre { font-family: Consolas, "Courier New", monospace; font-size: 9.5pt; }
+    pre {
+      background: #f4f6f8;
+      padding: 12px;
+      border-radius: 6px;
+      white-space: pre-wrap;
+    }
+    table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 10pt; }
+    th, td { border: 1px solid #ccc; padding: 6px 8px; text-align: left; vertical-align: top; }
+    th { background: #eef3f7; }
+    hr { border: none; border-top: 1px solid #ddd; margin: 1.5em 0; }
+  </style>
+</head>
+<body>
+<h1>RuleShark — Project Overview</h1>
+<p><strong>Version:</strong> documentation snapshot<br><strong>Stack:</strong> React + Vite frontend, Express API, OpenAI (<code>gpt-4o-mini</code>)<br><strong>Persistence:</strong> none on the server (optional browser <code>localStorage</code> for kept suggestions)</p>
+<hr>
+<h2>1. What it does</h2>
+<p>RuleShark reviews tabletop / card game rules for contradictions, loops, ambiguities, gaps, and inconsistencies, then suggests concrete rewrites. Users can also run a short multi-agent <strong>Test play</strong> simulation.</p>
+<p><strong>Core loop (no accounts):</strong></p>
+<ol>
+<li>Upload or paste rules (PDF, Word, TXT).</li>
+<li>Backend extracts text and calls OpenAI with a structured JSON schema.</li>
+<li>UI shows suggestions (diff + rationale). User keeps what they want.</li>
+<li>Download an updated rules file.</li>
+<li>Optional: Test play → sanity check → bounded simulation.</li>
+</ol>
+<hr>
+<h2>2. Architecture</h2>
+<pre><code>Browser (React / Vite :5173)
+    │  /api/*  (Vite proxy in local dev)
+    ▼
+Express API (:4000)
+    ├── /api/analyze   → extractText → analyzeRules → OpenAI
+    ├── /api/simulate  → sanityCheck → simulation → OpenAI
+    └── Rate limits    → per-IP + global token budgets (in-memory)
+    ▼
+OpenAI API (gpt-4o-mini)
+</code></pre>
+<p><strong>Deploy (Vercel):</strong> two services — Vite SPA + Express — with <code>/api/*</code> rewritten to the backend.</p>
+<p><strong>Not in scope anymore:</strong> MongoDB, user accounts, JWT auth, saved rules library.</p>
+<hr>
+<h2>3. Local run</h2>
+<pre><code class="language-powershell">npm install --prefix backend
+npm install --prefix frontend
+copy backend\.env.example backend\.env   # then set OPENAI_API_KEY
+npm run dev:backend
+npm run dev:frontend
+</code></pre>
+<ul>
+<li>UI: <a href="http://localhost:5173">http://localhost:5173</a>  </li>
+<li>API: <a href="http://localhost:4000/api/health">http://localhost:4000/api/health</a></li>
+</ul>
+<hr>
+<h2>4. Environment</h2>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Purpose</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>PORT</code></td>
+<td>API port</td>
+<td><code>4000</code></td>
+</tr>
+<tr>
+<td><code>CLIENT_ORIGIN</code></td>
+<td>CORS allowed origin(s)</td>
+<td><code>http://localhost:5173</code></td>
+</tr>
+<tr>
+<td><code>OPENAI_API_KEY</code></td>
+<td>OpenAI key</td>
+<td>(required for real LLM)</td>
+</tr>
+<tr>
+<td><code>OPENAI_MODEL</code></td>
+<td>Model id</td>
+<td><code>gpt-4o-mini</code></td>
+</tr>
+<tr>
+<td><code>MOCK_ANALYZE</code></td>
+<td>Fake LLM responses</td>
+<td><code>true</code> if no key</td>
+</tr>
+<tr>
+<td><code>LLM_RATE_LIMIT_REQUESTS</code></td>
+<td>Max LLM calls per IP / hour</td>
+<td><code>5</code></td>
+</tr>
+<tr>
+<td><code>LLM_RATE_LIMIT_TOKENS</code></td>
+<td>Max tokens per IP / hour</td>
+<td><code>40000</code></td>
+</tr>
+<tr>
+<td><code>LLM_RATE_LIMIT_WINDOW_MS</code></td>
+<td>Per-IP window</td>
+<td><code>3600000</code> (1h)</td>
+</tr>
+<tr>
+<td><code>LLM_GLOBAL_TOKEN_BUDGET</code></td>
+<td>Max tokens all clients / window</td>
+<td><code>40000000</code></td>
+</tr>
+<tr>
+<td><code>LLM_GLOBAL_TOKEN_WINDOW_MS</code></td>
+<td>Global window</td>
+<td>~30 days</td>
+</tr>
+</tbody></table>
+<hr>
+<h2>5. Rate limiting &amp; cost controls</h2>
+<h3>OpenAI pricing context (<code>gpt-4o-mini</code>)</h3>
+<table>
+<thead>
+<tr>
+<th>Direction</th>
+<th>Price</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Input</td>
+<td>~$0.15 / 1M tokens</td>
+</tr>
+<tr>
+<td>Output</td>
+<td>~$0.60 / 1M tokens</td>
+</tr>
+</tbody></table>
+<p>A <strong>$20 / month</strong> OpenAI hard limit is roughly:</p>
+<ul>
+<li><strong>~33M tokens</strong> if spend were all output  </li>
+<li><strong>~133M tokens</strong> if spend were all input</li>
+</ul>
+<p>RuleShark assumes a conservative <strong>~40M tokens / 30 days</strong> app-side budget.</p>
+<h3>App limits (defaults)</h3>
+<table>
+<thead>
+<tr>
+<th>Limit</th>
+<th>Default</th>
+<th>Rationale</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Per IP requests</td>
+<td><strong>5 / hour</strong></td>
+<td>Blocks spam; enough for normal demos</td>
+</tr>
+<tr>
+<td>Per IP tokens</td>
+<td><strong>40,000 / hour</strong></td>
+<td>One IP at max ≈ <strong>28.8M tokens/mo</strong> — under the 33M floor</td>
+</tr>
+<tr>
+<td>Global tokens</td>
+<td><strong>40,000,000 / 30 days</strong></td>
+<td>Shared ceiling ≈ conservative $20 mix</td>
+</tr>
+</tbody></table>
+<ul>
+<li>Applies to: <code>/api/analyze/upload</code>, <code>/api/analyze/paste</code>, <code>/api/simulate/check</code>, <code>/api/simulate/run</code>  </li>
+<li>Does <strong>not</strong> apply to: <code>/api/analyze/validate</code> (no OpenAI call)  </li>
+<li>Over limit → HTTP <strong>429</strong> with a clear message  </li>
+<li>Token usage is recorded from OpenAI <code>usage</code> after each call  </li>
+<li>Counters are <strong>in-memory</strong> (reset on process restart; not shared across multiple Vercel instances)  </li>
+<li><strong>Keep the OpenAI dashboard $20 hard limit</strong> as the real billing backstop</li>
+</ul>
+<hr>
+<h2>6. Main API routes</h2>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>GET</td>
+<td><code>/api/health</code></td>
+<td>Liveness + rate-limit summary</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/analyze/validate</code></td>
+<td>Preflight file check</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/analyze/upload</code></td>
+<td>Analyze uploaded rules</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/analyze/paste</code></td>
+<td>Analyze pasted text</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/simulate/check</code></td>
+<td>Sanity check only</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/simulate/run</code></td>
+<td>Sanity check + simulation</td>
+</tr>
+</tbody></table>
+<hr>
+<h2>7. Repo layout</h2>
+<pre><code>ruleshark/
+├── frontend/                 React + Vite SPA
+│   └── src/                  pages, components, localStorage keeps
+├── backend/
+│   ├── src/routes/           analyze, simulate
+│   ├── src/services/         extract, analyze, sanity, simulation, ipUsage
+│   ├── src/middleware/       llmRateLimit
+│   └── .env.example
+├── docs/                     This overview (+ PDF)
+├── vercel.json
+└── README.md
+</code></pre>
+<hr>
+<h2>8. Libraries and tradeoffs</h2>
+<h3>Backend runtime dependencies</h3>
+<table>
+<thead>
+<tr>
+<th>Library</th>
+<th>Role</th>
+<th>Pros</th>
+<th>Cons / tradeoffs</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>express</strong></td>
+<td>HTTP API framework</td>
+<td>Simple, ubiquitous, easy Vercel Fluid entry</td>
+<td>You assemble middleware yourself (CORS, limits, uploads)</td>
+</tr>
+<tr>
+<td><strong>cors</strong></td>
+<td>Cross-origin headers</td>
+<td>Tiny, standard</td>
+<td>Must configure origins carefully in production</td>
+</tr>
+<tr>
+<td><strong>dotenv</strong></td>
+<td>Load <code>backend/.env</code></td>
+<td>Zero config for local secrets</td>
+<td>Not for production secret injection (use host env)</td>
+</tr>
+<tr>
+<td><strong>openai</strong></td>
+<td>Official OpenAI SDK</td>
+<td>Structured outputs, usage stats, maintained</td>
+<td>Tied to OpenAI billing/quotas; needs network + key</td>
+</tr>
+<tr>
+<td><strong>multer</strong></td>
+<td>Multipart file upload</td>
+<td>Memory storage fits short analyze jobs</td>
+<td>Holds whole file in RAM; need size limits (15MB)</td>
+</tr>
+<tr>
+<td><strong>pdf-parse</strong></td>
+<td>Extract text from PDF</td>
+<td>Easy Node PDF text pull</td>
+<td>Layout/OCR-poor PDFs yield weak text; not a full PDF engine</td>
+</tr>
+<tr>
+<td><strong>mammoth</strong></td>
+<td>Extract text from DOCX</td>
+<td>Good plain-text from Word</td>
+<td>Not for complex layouts; <code>.doc</code> (legacy) limited</td>
+</tr>
+</tbody></table>
+<h3>Frontend runtime dependencies</h3>
+<table>
+<thead>
+<tr>
+<th>Library</th>
+<th>Role</th>
+<th>Pros</th>
+<th>Cons / tradeoffs</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>react</strong> / <strong>react-dom</strong></td>
+<td>UI</td>
+<td>Huge ecosystem, fits interactive modals/forms</td>
+<td>Bundle + learning curve vs plain HTML</td>
+</tr>
+<tr>
+<td><strong>react-router-dom</strong></td>
+<td>Client routing</td>
+<td>Simple SPA routes (<code>/</code>, <code>/#try</code>)</td>
+<td>Overkill if you stay single-page forever</td>
+</tr>
+<tr>
+<td><strong>vite</strong> (dev)</td>
+<td>Dev server + build</td>
+<td>Fast HMR, easy <code>/api</code> proxy</td>
+<td>Build output still needs static hosting</td>
+</tr>
+<tr>
+<td><strong>@vitejs/plugin-react</strong></td>
+<td>React transform</td>
+<td>Official Vite React support</td>
+<td>Dev-only concern</td>
+</tr>
+<tr>
+<td><strong>oxlint</strong></td>
+<td>Lint</td>
+<td>Fast Rust linter</td>
+<td>Not as deep as ESLint+plugins ecosystem</td>
+</tr>
+</tbody></table>
+<h3>Intentionally <strong>not</strong> used (and why)</h3>
+<table>
+<thead>
+<tr>
+<th>Approach</th>
+<th>Why skipped</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>MongoDB / Mongoose</strong></td>
+<td>Core product is analyze → edit → download; accounts/library added cost and ops without required value</td>
+</tr>
+<tr>
+<td><strong>JWT / bcrypt auth</strong></td>
+<td>No server persistence → no login</td>
+</tr>
+<tr>
+<td><strong>Cursor Cloud Agents / SDK</strong></td>
+<td>Hits Background Agent quotas / on-demand billing; OpenAI is simpler for this JSON analyze use case</td>
+</tr>
+<tr>
+<td><strong>Local Cursor CLI</strong></td>
+<td>Great for desktop apps; awkward for a public web API</td>
+</tr>
+<tr>
+<td><strong>Redis for rate limits</strong></td>
+<td>In-memory is enough for a single Node process / demo; Redis would be better for multi-instance Vercel</td>
+</tr>
+</tbody></table>
+<hr>
+<h2>9. Operational notes</h2>
+<ol>
+<li>Set OpenAI <strong>monthly hard limit ($20)</strong> in the dashboard.  </li>
+<li>Prefer <code>gpt-4o-mini</code> for cost.  </li>
+<li>Use <code>MOCK_ANALYZE=true</code> for UI work without spend.  </li>
+<li>Input is capped (<code>MAX_ANALYZE_CHARS</code> = 40,000) to bound tokens per call.  </li>
+<li>For multi-instance production, move rate-limit counters to Redis/KV or rely primarily on OpenAI’s hard cap.</li>
+</ol>
+<hr>
+<h2>10. Sample files</h2>
+<p><code>frontend/public/samples/</code> includes clean and “with-issues” rule files for demos from the UI.</p>
+
+</body>
+</html>

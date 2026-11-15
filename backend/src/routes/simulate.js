@@ -7,6 +7,7 @@ import {
   safeTitle,
   upload,
 } from "../lib/uploads.js";
+import { withLlmRateLimit } from "../middleware/llmRateLimit.js";
 import { extractTextFromBuffer } from "../services/extractText.js";
 import { sanityCheckRules } from "../services/sanityCheck.js";
 import { runSimulation } from "../services/simulation.js";
@@ -91,47 +92,55 @@ async function handleSimulate({ text, title, originalName, source, playerCount }
   };
 }
 
-router.post("/check", upload.single("file"), async (req, res) => {
-  try {
-    const resolved = await resolveRulesPayload(req);
-    const sanity = await sanityCheckRules(resolved.text, resolved.playerCount);
-    return res.json({
-      source: resolved.source,
-      title: resolved.title,
-      originalName: resolved.originalName,
-      playerCount: resolved.playerCount,
-      truncated: resolved.truncated,
-      started: false,
-      sanity,
-      simulation: null,
-    });
-  } catch (err) {
-    console.error("Simulate check failed:", err);
-    return res.status(err.status || 500).json({
-      error: err.message || "Sanity check failed.",
-    });
-  }
-});
+router.post(
+  "/check",
+  upload.single("file"),
+  withLlmRateLimit(async (req, res) => {
+    try {
+      const resolved = await resolveRulesPayload(req);
+      const sanity = await sanityCheckRules(resolved.text, resolved.playerCount);
+      return res.json({
+        source: resolved.source,
+        title: resolved.title,
+        originalName: resolved.originalName,
+        playerCount: resolved.playerCount,
+        truncated: resolved.truncated,
+        started: false,
+        sanity,
+        simulation: null,
+      });
+    } catch (err) {
+      console.error("Simulate check failed:", err);
+      return res.status(err.status || 500).json({
+        error: err.message || "Sanity check failed.",
+      });
+    }
+  })
+);
 
-router.post("/run", upload.single("file"), async (req, res) => {
-  try {
-    const resolved = await resolveRulesPayload(req);
-    const payload = await handleSimulate({
-      text: resolved.text,
-      title: resolved.title,
-      originalName: resolved.originalName,
-      source: resolved.source,
-      playerCount: resolved.playerCount,
-    });
+router.post(
+  "/run",
+  upload.single("file"),
+  withLlmRateLimit(async (req, res) => {
+    try {
+      const resolved = await resolveRulesPayload(req);
+      const payload = await handleSimulate({
+        text: resolved.text,
+        title: resolved.title,
+        originalName: resolved.originalName,
+        source: resolved.source,
+        playerCount: resolved.playerCount,
+      });
 
-    return res.json({ ...payload, truncated: resolved.truncated });
-  } catch (err) {
-    console.error("Simulate failed:", err);
-    return res.status(err.status || 500).json({
-      error: err.message || "Simulation failed.",
-    });
-  }
-});
+      return res.json({ ...payload, truncated: resolved.truncated });
+    } catch (err) {
+      console.error("Simulate failed:", err);
+      return res.status(err.status || 500).json({
+        error: err.message || "Simulation failed.",
+      });
+    }
+  })
+);
 
 router.use(handleMulterError);
 

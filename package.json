@@ -4,6 +4,10 @@
   "scripts": {
     "dev:backend": "npm run dev --prefix backend",
     "dev:frontend": "npm run dev --prefix frontend",
-    "dev": "npm run dev:backend & npm run dev:frontend"
+    "dev": "npm run dev:backend & npm run dev:frontend",
+    "docs:pdf": "node docs/build-overview-pdf.mjs"
+  },
+  "devDependencies": {
+    "marked": "^15.0.0"
   }
 }

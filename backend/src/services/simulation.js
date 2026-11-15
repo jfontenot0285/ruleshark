@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { config } from "../config.js";
+import { recordTokensFromOpenAIUsage } from "./ipUsage.js";
 import { sanityCheckRules } from "./sanityCheck.js";
 
 /** Hard stop so simulations cannot run unbounded even if rules are weak. */
@@ -312,6 +313,8 @@ async function runLlmSimulation({ rulesText, playerCount, title }) {
       },
     },
   });
+
+  recordTokensFromOpenAIUsage(completion.usage);
 
   const parsed = JSON.parse(completion.choices?.[0]?.message?.content || "{}");
   return {

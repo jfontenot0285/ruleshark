@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { config } from "../config.js";
+import { recordTokensFromOpenAIUsage } from "./ipUsage.js";
 import { mockAnalyzeRulesText } from "./mockAnalyze.js";
 
 const suggestionSchema = {
@@ -106,6 +107,8 @@ export async function analyzeRulesText(rulesText, { title } = {}) {
     },
   });
 
+  recordTokensFromOpenAIUsage(completion.usage);
+
   const raw = completion.choices?.[0]?.message?.content;
   if (!raw) {
     throw new Error("The model returned an empty analysis.");
@@ -122,5 +125,6 @@ export async function analyzeRulesText(rulesText, { title } = {}) {
     summary: parsed.summary || "",
     suggestions,
     model: config.openaiModel,
+    usage: completion.usage || null,
   };
 }

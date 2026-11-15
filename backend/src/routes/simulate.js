@@ -83,7 +83,6 @@ async function handleSimulate({ text, title, originalName, source, playerCount }
   });
 
   return {
-    persisted: false,
     source,
     title,
     originalName,
@@ -97,7 +96,6 @@ router.post("/check", upload.single("file"), async (req, res) => {
     const resolved = await resolveRulesPayload(req);
     const sanity = await sanityCheckRules(resolved.text, resolved.playerCount);
     return res.json({
-      persisted: false,
       source: resolved.source,
       title: resolved.title,
       originalName: resolved.originalName,

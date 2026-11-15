@@ -9,7 +9,7 @@ export default function SuggestionsList({
 }) {
   if (!result) return null;
 
-  const { analysis, truncated, title, originalName, persisted } = result;
+  const { analysis, truncated, title, originalName } = result;
   const suggestions = analysis?.suggestions || [];
 
   return (
@@ -18,7 +18,6 @@ export default function SuggestionsList({
         {hideTitle ? null : <h2>Suggestions</h2>}
         <p className="muted">
           {title || originalName}
-          {persisted === false ? " · not saved (guest)" : null}
           {truncated ? " · input truncated for analysis" : null}
         </p>
         {analysis?.summary ? <p className="suggestions-summary">{analysis.summary}</p> : null}

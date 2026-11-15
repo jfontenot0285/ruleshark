@@ -62,7 +62,6 @@ router.post("/validate", upload.single("file"), async (req, res) => {
 async function runAnalysis({ text, title, source, originalName }) {
   const analysis = await analyzeRulesText(text, { title });
   return {
-    persisted: false,
     source,
     title,
     originalName,

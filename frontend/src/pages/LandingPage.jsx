@@ -1,7 +1,6 @@
 import { useCallback, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api.js";
-import { useAuth } from "../auth/AuthContext.jsx";
 import DownloadRulesModal from "../components/DownloadRulesModal.jsx";
 import RulesInput from "../components/RulesInput.jsx";
 import SharkSwimLoader from "../components/SharkSwimLoader.jsx";
@@ -19,7 +18,6 @@ function analysisFingerprint({ mode, file, text }) {
 }
 
 export default function LandingPage() {
-  const { user, logout } = useAuth();
   const [result, setResult] = useState(null);
   const [resultFingerprint, setResultFingerprint] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -104,22 +102,6 @@ export default function LandingPage() {
         <Link to="/" className="brand-mark" aria-label="RuleShark home">
           <img src="/logo_shark.jpeg" alt="" className="brand-mark-icon" />
         </Link>
-        <nav className="topbar-actions">
-          {user ? (
-            <button type="button" className="btn btn-ghost" onClick={logout}>
-              Log out
-            </button>
-          ) : (
-            <>
-              <Link className="btn btn-ghost" to="/login">
-                Log in
-              </Link>
-              <Link className="btn btn-primary" to="/register">
-                Register
-              </Link>
-            </>
-          )}
-        </nav>
       </header>
 
       <main>

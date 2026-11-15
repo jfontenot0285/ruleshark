@@ -1,7 +1,5 @@
 import { useEffect, useState } from "react";
-import { api } from "../api.js";
 import { applyKeptSuggestions } from "../applySuggestions.js";
-import { useAuth } from "../auth/AuthContext.jsx";
 import {
   addGuestKept,
   removeGuestKeptBySuggestionId,
@@ -15,9 +13,7 @@ export default function SuggestionsModal({
   onKeptChange,
   onSaveComplete,
 }) {
-  const { token, user } = useAuth();
   const [statuses, setStatuses] = useState({});
-  const [keptRecordIds, setKeptRecordIds] = useState({});
   const [busyId, setBusyId] = useState(null);
   const [error, setError] = useState("");
   const [confirmingSave, setConfirmingSave] = useState(false);
@@ -25,7 +21,6 @@ export default function SuggestionsModal({
   // Reset choices only when a new analysis arrives, not when reopening the same one.
   useEffect(() => {
     setStatuses({});
-    setKeptRecordIds({});
     setBusyId(null);
     setError("");
     setConfirmingSave(false);
@@ -53,35 +48,19 @@ export default function SuggestionsModal({
     setError("");
     setBusyId(item.id);
     try {
-      if (token) {
-        const data = await api("/api/suggestions/keep", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
-          body: JSON.stringify({
-            sourceTitle: result.title || "",
-            sourceName: result.originalName || "",
-            mocked: Boolean(result.analysis?.mocked),
-            suggestion: item,
-          }),
-        });
-        if (data?.suggestion?.id) {
-          setKeptRecordIds((prev) => ({ ...prev, [item.id]: data.suggestion.id }));
-        }
-      } else {
-        addGuestKept({
-          suggestionId: item.id,
-          sourceTitle: result.title || "",
-          sourceName: result.originalName || "",
-          type: item.type,
-          severity: item.severity,
-          title: item.title,
-          original: item.original,
-          proposed: item.proposed,
-          rationale: item.rationale,
-          diff: item.diff,
-          mocked: Boolean(result.analysis?.mocked),
-        });
-      }
+      addGuestKept({
+        suggestionId: item.id,
+        sourceTitle: result.title || "",
+        sourceName: result.originalName || "",
+        type: item.type,
+        severity: item.severity,
+        title: item.title,
+        original: item.original,
+        proposed: item.proposed,
+        rationale: item.rationale,
+        diff: item.diff,
+        mocked: Boolean(result.analysis?.mocked),
+      });
 
       setStatuses((prev) => ({ ...prev, [item.id]: "kept" }));
       onKeptChange?.();
@@ -102,22 +81,7 @@ export default function SuggestionsModal({
     try {
       const previous = statuses[item.id];
       if (previous === "kept") {
-        if (token) {
-          const recordId = keptRecordIds[item.id];
-          if (recordId) {
-            await api(`/api/suggestions/kept/${recordId}`, {
-              method: "DELETE",
-              headers: { Authorization: `Bearer ${token}` },
-            });
-          }
-        } else {
-          removeGuestKeptBySuggestionId(item.id);
-        }
-        setKeptRecordIds((prev) => {
-          const next = { ...prev };
-          delete next[item.id];
-          return next;
-        });
+        removeGuestKeptBySuggestionId(item.id);
         onKeptChange?.();
       }
 
@@ -167,8 +131,7 @@ export default function SuggestionsModal({
             <h2 id="suggestions-modal-title">Suggested changes</h2>
             <p className="muted modal-subtitle">
               {mocked ? "Mock analysis · no OpenAI call · " : null}
-              Keep the changes you want to save
-              {user ? " to your account" : " in this browser"}
+              Keep the changes you want, then download an updated rules file
             </p>
           </div>
           <div className="modal-header-actions">

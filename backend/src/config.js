@@ -41,4 +41,10 @@ export const config = {
   llmGlobalTokenWindowMs:
     Number(process.env.LLM_GLOBAL_TOKEN_WINDOW_MS) || 30 * 24 * 60 * 60 * 1000,
   llmGlobalTokenBudget: Number(process.env.LLM_GLOBAL_TOKEN_BUDGET) || 40_000_000,
+  /**
+   * Agentic pipelines (analyze + test play):
+   * orchestrator overview → parallel specialists → local merge.
+   * ANALYZE_AGENTIC=false forces a single OpenAI call per workflow (cheaper).
+   */
+  analyzeAgentic: process.env.ANALYZE_AGENTIC !== "false",
 };

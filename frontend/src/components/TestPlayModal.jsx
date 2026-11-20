@@ -157,6 +157,12 @@ export default function TestPlayModal({ open, payload, onClose }) {
               {sanity ? (
                 <section className={`sim-sanity ${blocked ? "is-blocked" : "is-ok"}`}>
                   <h3>{blocked ? "Simulation blocked" : "Sanity check"}</h3>
+                  {sanity?.pipeline?.steps?.length ? (
+                    <p className="muted">
+                      {sanity.pipeline.mode || "pipeline"}:{" "}
+                      {sanity.pipeline.steps.join(" → ")}
+                    </p>
+                  ) : null}
                   <p>{sanity.summary}</p>
 
                   {blockingIssues.length ? (

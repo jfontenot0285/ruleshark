@@ -38,11 +38,67 @@
 <p><strong>Core loop (no accounts):</strong></p>
 <ol>
 <li>Upload or paste rules (PDF, Word, TXT).</li>
-<li>Backend extracts text and calls OpenAI with a structured JSON schema.</li>
+<li>Backend extracts text and runs an <strong>orchestrated analyze</strong> (overview → specialists → local merge).</li>
 <li>UI shows suggestions (diff + rationale). User keeps what they want.</li>
 <li>Download an updated rules file.</li>
-<li>Optional: Test play → sanity check → bounded simulation.</li>
+<li>Optional: Test play → orchestrated sanity check → bounded simulation.</li>
 </ol>
+<h3>Orchestrated pipelines (v3)</h3>
+<p><strong>Analyze rules</strong></p>
+<table>
+<thead>
+<tr>
+<th>Step</th>
+<th>Role</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>orchestrator</td>
+<td>Rules overview + specialist dispatch</td>
+</tr>
+<tr>
+<td>ambiguity</td>
+<td>Unclear wording, definitions, player disagreement</td>
+</tr>
+<tr>
+<td>continuity</td>
+<td>Contradictions, inconsistent terms, loops</td>
+</tr>
+<tr>
+<td>playerExperience</td>
+<td>Turn flow, fairness, edge cases, playability</td>
+</tr>
+</tbody></table>
+<p><strong>Test play</strong></p>
+<table>
+<thead>
+<tr>
+<th>Step</th>
+<th>Role</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>orchestrator</td>
+<td>Briefing + dispatch + simulation brief</td>
+</tr>
+<tr>
+<td>endCondition</td>
+<td>Win/lose/draw and ending conflicts</td>
+</tr>
+<tr>
+<td>loopsProgress</td>
+<td>Infinite loops, stalls, no legal progress</td>
+</tr>
+<tr>
+<td>playerFit</td>
+<td>Requested player count vs rules</td>
+</tr>
+<tr>
+<td>simulation</td>
+<td>Referee + players using the orchestrator brief</td>
+</tr>
+</tbody></table>
+<p>Env: <code>ANALYZE_AGENTIC=true</code> (default). Set <code>false</code> for a single OpenAI call per workflow. Still counts as <strong>one</strong> rate-limit request; tokens from every OpenAI call are summed into the IP/global budgets.</p>
 <hr>
 <h2>2. Architecture</h2>
 <pre><code>Browser (React / Vite :5173)

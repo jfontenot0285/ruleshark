@@ -7,9 +7,14 @@ Web app that reviews tabletop / card game rules for contradictions, loops, ambig
 ## How it works
 
 1. **Upload or paste** rules (PDF, DOCX, TXT, or plain text).
-2. The backend **extracts text** and sends it to **OpenAI** with a structured JSON schema.
+2. The backend **extracts text** and runs an **orchestrated analyze** against OpenAI:
+   - **orchestrator** — short rules overview + which specialists to run  
+   - **ambiguity** / **continuity** / **player experience** specialists in parallel  
+   - results are **merged locally** (no extra synthesize call)
 3. The UI shows **suggestions** (diff + rationale). Keep what you want, then download.
-4. **Test play** runs a sanity check, then a bounded multi-agent simulation (referee + players).
+4. **Test play** uses the same pattern: orchestrator briefing → end-condition / loops-progress / player-fit specialists → then a bounded referee + player simulation.
+
+Set `ANALYZE_AGENTIC=false` for a single OpenAI call per workflow (cheaper).
 
 | Surface | URL (local) | Notes |
 |--------|-------------|--------|
@@ -123,6 +128,7 @@ CLIENT_ORIGIN=http://localhost:5173
 OPENAI_API_KEY=sk-...
 OPENAI_MODEL=gpt-4o-mini
 MOCK_ANALYZE=false
+ANALYZE_AGENTIC=true
 ```
 
 ### Run

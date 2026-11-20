@@ -149,10 +149,14 @@ export function recordTokensFromOpenAIUsage(usage) {
   return total;
 }
 
-/** Rough preflight estimate: ~4 chars/token + headroom for the completion. */
+/**
+ * Rough preflight estimate for rate-limit reservation.
+ * Orchestrated mode: 1 overview + up to 3 specialists ≈ 4 LLM calls.
+ */
 export function estimateTokensFromText(text, completionReserve = 4000) {
   const chars = String(text || "").length;
-  return Math.ceil(chars / 4) + completionReserve;
+  const calls = config.analyzeAgentic === false ? 1 : 4;
+  return Math.ceil(chars / 4) + completionReserve * calls;
 }
 
 setInterval(() => {

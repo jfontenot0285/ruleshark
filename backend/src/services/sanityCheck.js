@@ -1,6 +1,10 @@
-import OpenAI from "openai";
 import { config } from "../config.js";
-import { recordTokensFromOpenAIUsage } from "./ipUsage.js";
+import {
+  buildRulesUserPayload,
+  chatJson,
+  createOpenAIClient,
+  usageTotal,
+} from "./openaiAgents.js";
 
 function findPlayerCountHints(rulesText) {
   const text = rulesText.toLowerCase();
@@ -254,6 +258,162 @@ export function mockSanityCheck(rulesText, playerCount) {
   };
 }
 
+const sanityIssueSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    code: { type: "string" },
+    severity: { type: "string", enum: ["blocking", "warning"] },
+    message: { type: "string" },
+  },
+  required: ["code", "severity", "message"],
+};
+
+const sanitySpecialistSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    summary: { type: "string" },
+    hasEndCondition: { type: "boolean" },
+    issues: {
+      type: "array",
+      items: sanityIssueSchema,
+    },
+  },
+  required: ["summary", "hasEndCondition", "issues"],
+};
+
+const simOverviewSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    overview: { type: "string" },
+    gameType: { type: "string" },
+    winConditionHint: { type: "string" },
+    turnFlowHint: { type: "string" },
+    riskAreas: {
+      type: "array",
+      items: { type: "string" },
+    },
+    dispatch: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        endCondition: { type: "boolean" },
+        loopsProgress: { type: "boolean" },
+        playerFit: { type: "boolean" },
+      },
+      required: ["endCondition", "loopsProgress", "playerFit"],
+    },
+    simulationBrief: { type: "string" },
+  },
+  required: [
+    "overview",
+    "gameType",
+    "winConditionHint",
+    "turnFlowHint",
+    "riskAreas",
+    "dispatch",
+    "simulationBrief",
+  ],
+};
+
+const SANITY_SPECIALISTS = [
+  {
+    id: "endCondition",
+    dispatchKey: "endCondition",
+    system: [
+      "You are RuleShark's End Condition specialist for Test play readiness.",
+      "Focus only on whether the game can end: win/lose/draw conditions, elimination, score caps, conflicting endings.",
+      "Use codes like missing_end_condition, conflicting_end_condition, unbounded_length.",
+      "blocking = simulation unsafe; warning = clarity only.",
+      "Set hasEndCondition true only if a usable end/win condition exists.",
+    ].join(" "),
+  },
+  {
+    id: "loopsProgress",
+    dispatchKey: "loopsProgress",
+    system: [
+      "You are RuleShark's Loops & Progress specialist for Test play readiness.",
+      "Focus only on infinite loops, forced repeats, stall states, empty-deck traps, and no-legal-move deadlocks.",
+      "Use codes like infinite_loop, no_progress, unbounded_length.",
+      "blocking = simulation unsafe; warning = clarity only.",
+      "Set hasEndCondition true if your lane does not dispute ending; false only if loops make ending impossible.",
+    ].join(" "),
+  },
+  {
+    id: "playerFit",
+    dispatchKey: "playerFit",
+    system: [
+      "You are RuleShark's Player Fit specialist for Test play readiness.",
+      "Focus only on whether the requested player count matches the rules (exact or range) and two-player-only wording.",
+      "Use codes like player_count_mismatch, player_count_out_of_range.",
+      "blocking when count is incompatible; warning for soft uncertainty.",
+      "Set hasEndCondition true unless player-count issues make play impossible.",
+    ].join(" "),
+  },
+];
+
+function mergeSanityIssues(groups) {
+  const seen = new Set();
+  const issues = [];
+  for (const group of groups) {
+    for (const issue of group) {
+      const key = `${issue.code}|${issue.message}`.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      issues.push(issue);
+    }
+  }
+  return issues;
+}
+
+async function runSimOrchestrator(client, rulesText, playerCount) {
+  return chatJson(client, {
+    name: "sim_overview",
+    schema: simOverviewSchema,
+    temperature: 0.1,
+    system: [
+      "You are RuleShark's Test Play Orchestrator.",
+      "Brief specialists before a multi-agent simulation.",
+      "Summarize game type, win condition, turn flow, and risks.",
+      "Decide which specialists to run: endCondition, loopsProgress, playerFit.",
+      "Default dispatch true unless clearly irrelevant.",
+      "simulationBrief is a short handoff for the referee/player simulation agents.",
+    ].join(" "),
+    user: buildRulesUserPayload(rulesText, {
+      extra: `Requested players for Test play: ${playerCount}. Produce an orchestrator briefing and dispatch plan.`,
+    }),
+  });
+}
+
+async function runSanitySpecialist(client, specialist, rulesText, playerCount, overview) {
+  const briefing = [
+    `Orchestrator overview: ${overview.overview}`,
+    `Game type: ${overview.gameType}`,
+    `Win condition hint: ${overview.winConditionHint}`,
+    `Turn flow hint: ${overview.turnFlowHint}`,
+    `Risk areas: ${(overview.riskAreas || []).join("; ") || "none"}`,
+    `Your lane: ${specialist.id}. Stay in lane.`,
+  ].join("\n");
+
+  const result = await chatJson(client, {
+    name: `sanity_${specialist.id}`,
+    schema: sanitySpecialistSchema,
+    temperature: 0,
+    system: specialist.system,
+    user: buildRulesUserPayload(rulesText, {
+      extra: `${briefing}\nRequested players: ${playerCount}`,
+    }),
+  });
+
+  return {
+    agentId: specialist.id,
+    parsed: result.data,
+    usage: result.usage,
+  };
+}
+
 export async function sanityCheckRules(rulesText, playerCount) {
   const count = Number(playerCount);
   if (!Number.isInteger(count) || count < 2 || count > 6) {
@@ -267,76 +427,117 @@ export async function sanityCheckRules(rulesText, playerCount) {
     return mockSanityCheck(rulesText, count);
   }
 
-  const client = new OpenAI({ apiKey: config.openaiApiKey });
-  const completion = await client.chat.completions.create({
-    model: config.openaiModel,
-    temperature: 0,
-    messages: [
-      {
-        role: "system",
-        content: [
-          "You validate tabletop/card game rules before a multi-agent simulation.",
-          "Block the simulation when the game may never end, loop forever, stall with no legal progress, lack a real win/end condition, or when player count does not match the rules.",
-          "Use severity \"blocking\" for those cases. Use \"warning\" only for clarity problems that still allow a finite game.",
-          "Prefer specific issue codes: missing_end_condition, infinite_loop, no_progress, unbounded_length, player_count_mismatch, player_count_out_of_range, conflicting_end_condition.",
-          "Set ok=false if any blocking issue exists.",
-        ].join(" "),
-      },
-      {
-        role: "user",
-        content: `Requested players: ${count}\n\nRules:\n---\n${rulesText}\n---`,
-      },
-    ],
-    response_format: {
-      type: "json_schema",
-      json_schema: {
-        name: "sanity_check",
-        strict: true,
-        schema: {
-          type: "object",
-          additionalProperties: false,
-          properties: {
-            ok: { type: "boolean" },
-            hasEndCondition: { type: "boolean" },
-            summary: { type: "string" },
-            issues: {
-              type: "array",
-              items: {
-                type: "object",
-                additionalProperties: false,
-                properties: {
-                  code: { type: "string" },
-                  severity: { type: "string", enum: ["blocking", "warning"] },
-                  message: { type: "string" },
-                },
-                required: ["code", "severity", "message"],
-              },
-            },
-          },
-          required: ["ok", "hasEndCondition", "summary", "issues"],
+  if (!config.analyzeAgentic) {
+    const client = createOpenAIClient();
+    const { data, usage } = await chatJson(client, {
+      name: "sanity_check",
+      schema: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          ok: { type: "boolean" },
+          hasEndCondition: { type: "boolean" },
+          summary: { type: "string" },
+          issues: { type: "array", items: sanityIssueSchema },
+          simulationBrief: { type: "string" },
         },
+        required: ["ok", "hasEndCondition", "summary", "issues", "simulationBrief"],
       },
-    },
-  });
+      temperature: 0,
+      system: [
+        "You validate tabletop/card game rules before a multi-agent simulation.",
+        "Block when the game may never end, loop forever, stall, lack a win/end condition, or player count mismatches.",
+        'Use severity "blocking" or "warning". Set ok=false if any blocking issue exists.',
+        "simulationBrief is a short handoff for the later simulation agents.",
+      ].join(" "),
+      user: buildRulesUserPayload(rulesText, {
+        extra: `Requested players: ${count}`,
+      }),
+    });
 
-  recordTokensFromOpenAIUsage(completion.usage);
+    const issues = data.issues || [];
+    const ok =
+      Boolean(data.ok) && !issues.some((issue) => issue.severity === "blocking");
 
-  const parsed = JSON.parse(completion.choices?.[0]?.message?.content || "{}");
-  const issues = parsed.issues || [];
-  const ok =
-    Boolean(parsed.ok) && !issues.some((issue) => issue.severity === "blocking");
+    return {
+      ok,
+      playerCount: count,
+      hasEndCondition: Boolean(data.hasEndCondition),
+      playerCountHints: findPlayerCountHints(rulesText),
+      issues,
+      summary:
+        data.summary ||
+        (ok
+          ? `Sanity check passed for ${count} players.`
+          : `Simulation blocked for ${count} players.`),
+      mocked: false,
+      simulationBrief: data.simulationBrief || data.summary || "",
+      pipeline: {
+        mode: "single",
+        steps: ["sanity"],
+        usageTokens: usageTotal(usage),
+      },
+    };
+  }
+
+  const client = createOpenAIClient();
+  const steps = [];
+  let totalTokens = 0;
+
+  const overviewResult = await runSimOrchestrator(client, rulesText, count);
+  steps.push("orchestrator");
+  totalTokens += usageTotal(overviewResult.usage);
+  const overview = overviewResult.data;
+
+  const selected = SANITY_SPECIALISTS.filter(
+    (spec) => overview.dispatch?.[spec.dispatchKey] !== false
+  );
+  const specialists = selected.length > 0 ? selected : SANITY_SPECIALISTS;
+
+  const specialistResults = await Promise.all(
+    specialists.map((spec) =>
+      runSanitySpecialist(client, spec, rulesText, count, overview)
+    )
+  );
+
+  for (const result of specialistResults) {
+    steps.push(result.agentId);
+    totalTokens += usageTotal(result.usage);
+  }
+
+  const issues = mergeSanityIssues(specialistResults.map((r) => r.parsed.issues || []));
+  const hasEndCondition = specialistResults.some((r) => r.parsed.hasEndCondition);
+  const ok = !issues.some((issue) => issue.severity === "blocking");
+  const specialistNotes = specialistResults
+    .map((r) => `${r.agentId}: ${r.parsed.summary || "ok"}`)
+    .join(" ");
 
   return {
     ok,
     playerCount: count,
-    hasEndCondition: Boolean(parsed.hasEndCondition),
+    hasEndCondition,
     playerCountHints: findPlayerCountHints(rulesText),
     issues,
-    summary:
-      parsed.summary ||
-      (ok
-        ? `Sanity check passed for ${count} players.`
-        : `Simulation blocked for ${count} players.`),
+    summary: ok
+      ? `${overview.overview} Specialists: ${specialistNotes}`
+      : `Simulation blocked for ${count} players. ${overview.overview} ${specialistNotes}`,
     mocked: false,
+    simulationBrief: overview.simulationBrief || overview.overview,
+    overview: {
+      gameType: overview.gameType,
+      winConditionHint: overview.winConditionHint,
+      turnFlowHint: overview.turnFlowHint,
+      riskAreas: overview.riskAreas || [],
+    },
+    pipeline: {
+      mode: "orchestrated",
+      steps,
+      agents: specialistResults.map((r) => ({
+        id: r.agentId,
+        issueCount: (r.parsed.issues || []).length,
+        summary: r.parsed.summary || "",
+      })),
+      usageTokens: totalTokens,
+    },
   };
 }

@@ -13,10 +13,33 @@ RuleShark reviews tabletop / card game rules for contradictions, loops, ambiguit
 **Core loop (no accounts):**
 
 1. Upload or paste rules (PDF, Word, TXT).
-2. Backend extracts text and calls OpenAI with a structured JSON schema.
+2. Backend extracts text and runs an **orchestrated analyze** (overview → specialists → local merge).
 3. UI shows suggestions (diff + rationale). User keeps what they want.
 4. Download an updated rules file.
-5. Optional: Test play → sanity check → bounded simulation.
+5. Optional: Test play → orchestrated sanity check → bounded simulation.
+
+### Orchestrated pipelines (v3)
+
+**Analyze rules**
+
+| Step | Role |
+|------|------|
+| orchestrator | Rules overview + specialist dispatch |
+| ambiguity | Unclear wording, definitions, player disagreement |
+| continuity | Contradictions, inconsistent terms, loops |
+| playerExperience | Turn flow, fairness, edge cases, playability |
+
+**Test play**
+
+| Step | Role |
+|------|------|
+| orchestrator | Briefing + dispatch + simulation brief |
+| endCondition | Win/lose/draw and ending conflicts |
+| loopsProgress | Infinite loops, stalls, no legal progress |
+| playerFit | Requested player count vs rules |
+| simulation | Referee + players using the orchestrator brief |
+
+Env: `ANALYZE_AGENTIC=true` (default). Set `false` for a single OpenAI call per workflow. Still counts as **one** rate-limit request; tokens from every OpenAI call are summed into the IP/global budgets.
 
 ---
 

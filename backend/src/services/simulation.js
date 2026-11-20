@@ -1,6 +1,10 @@
-import OpenAI from "openai";
 import { config } from "../config.js";
-import { recordTokensFromOpenAIUsage } from "./ipUsage.js";
+import {
+  buildRulesUserPayload,
+  chatJson,
+  createOpenAIClient,
+  usageTotal,
+} from "./openaiAgents.js";
 import { sanityCheckRules } from "./sanityCheck.js";
 
 /** Hard stop so simulations cannot run unbounded even if rules are weak. */
@@ -234,9 +238,14 @@ export async function runMockSimulation({ rulesText, playerCount, title }) {
   };
 }
 
-async function runLlmSimulation({ rulesText, playerCount, title }) {
-  // Keep a bounded real LLM path: spawn agent roster + ask model for a compact play transcript.
-  const client = new OpenAI({ apiKey: config.openaiApiKey });
+async function runLlmSimulation({
+  rulesText,
+  playerCount,
+  title,
+  simulationBrief = "",
+  overview = null,
+}) {
+  const client = createOpenAIClient();
   const agents = [
     { id: "referee", role: "referee", name: "Referee" },
     ...Array.from({ length: playerCount }, (_, i) => ({
@@ -247,93 +256,98 @@ async function runLlmSimulation({ rulesText, playerCount, title }) {
     })),
   ];
 
-  const completion = await client.chat.completions.create({
-    model: config.openaiModel,
-    temperature: 0.4,
-    messages: [
-      {
-        role: "system",
-        content: [
-          "You simulate a short multi-agent playtest.",
-          "One referee and N player agents take turns under the rules.",
-          "Return a compact structured transcript with a winner or draw and clear end reason.",
-          "Never exceed the turn cap. If the cap is hit, end the game and say the turn limit was reached.",
-        ].join(" "),
-      },
-      {
-        role: "user",
-        content: `Title: ${title || "Untitled"}\nPlayers: ${playerCount}\nAgents: ${agents
-          .map((a) => a.name)
-          .join(", ")}\n\nRules:\n---\n${rulesText}\n---\nSimulate up to ${maxSimulationTurns(playerCount)} turns. Stop earlier if someone wins.`,
-      },
-    ],
-    response_format: {
-      type: "json_schema",
-      json_schema: {
-        name: "simulation_result",
-        strict: true,
-        schema: {
-          type: "object",
-          additionalProperties: false,
-          properties: {
-            turns: { type: "number" },
-            winner: { type: ["string", "null"] },
-            reason: { type: "string" },
-            finalState: {
-              type: "array",
-              items: {
-                type: "object",
-                additionalProperties: false,
-                properties: {
-                  seat: { type: "number" },
-                  name: { type: "string" },
-                  life: { type: "number" },
-                  note: { type: "string" },
-                },
-                required: ["seat", "name", "life", "note"],
-              },
+  const briefing = [
+    simulationBrief ? `Orchestrator simulation brief: ${simulationBrief}` : null,
+    overview?.gameType ? `Game type: ${overview.gameType}` : null,
+    overview?.winConditionHint
+      ? `Win condition hint: ${overview.winConditionHint}`
+      : null,
+    overview?.turnFlowHint ? `Turn flow hint: ${overview.turnFlowHint}` : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const { data, usage } = await chatJson(client, {
+    name: "simulation_result",
+    schema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        turns: { type: "number" },
+        winner: { type: ["string", "null"] },
+        reason: { type: "string" },
+        finalState: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              seat: { type: "number" },
+              name: { type: "string" },
+              life: { type: "number" },
+              note: { type: "string" },
             },
-            log: {
-              type: "array",
-              items: {
-                type: "object",
-                additionalProperties: false,
-                properties: {
-                  agent: { type: "string" },
-                  event: { type: "string" },
-                  detail: { type: "string" },
-                  turn: { type: ["number", "null"] },
-                },
-                required: ["agent", "event", "detail", "turn"],
-              },
-            },
+            required: ["seat", "name", "life", "note"],
           },
-          required: ["turns", "winner", "reason", "finalState", "log"],
+        },
+        log: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              agent: { type: "string" },
+              event: { type: "string" },
+              detail: { type: "string" },
+              turn: { type: ["number", "null"] },
+            },
+            required: ["agent", "event", "detail", "turn"],
+          },
         },
       },
+      required: ["turns", "winner", "reason", "finalState", "log"],
     },
+    temperature: 0.4,
+    system: [
+      "You simulate a short multi-agent playtest.",
+      "One referee and N player agents take turns under the rules.",
+      "Follow the orchestrator briefing when present.",
+      "Return a compact structured transcript with a winner or draw and clear end reason.",
+      "Never exceed the turn cap. If the cap is hit, end the game and say the turn limit was reached.",
+    ].join(" "),
+    user: buildRulesUserPayload(rulesText, {
+      title: title || "Untitled",
+      extra: [
+        `Players: ${playerCount}`,
+        `Agents: ${agents.map((a) => a.name).join(", ")}`,
+        briefing,
+        `Simulate up to ${maxSimulationTurns(playerCount)} turns. Stop earlier if someone wins.`,
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    }),
   });
 
-  recordTokensFromOpenAIUsage(completion.usage);
-
-  const parsed = JSON.parse(completion.choices?.[0]?.message?.content || "{}");
   return {
     mocked: false,
     title: title || "Untitled rules",
     playerCount,
     agents,
-    turns: parsed.turns || 0,
-    winner: parsed.winner ?? null,
-    reason: parsed.reason || "",
-    finalState: parsed.finalState || [],
+    turns: data.turns || 0,
+    winner: data.winner ?? null,
+    reason: data.reason || "",
+    finalState: data.finalState || [],
+    usageTokens: usageTotal(usage),
     log: [
       {
         agent: "Orchestrator",
         event: "spawn",
-        detail: `Spawned ${playerCount} player agents + 1 referee.`,
+        detail: simulationBrief
+          ? `Spawned ${playerCount} player agents + 1 referee. Brief: ${simulationBrief}`
+          : `Spawned ${playerCount} player agents + 1 referee.`,
         turn: null,
       },
-      ...(parsed.log || []),
+      ...(data.log || []),
     ],
   };
 }
@@ -351,7 +365,13 @@ export async function runSimulation({ rulesText, playerCount, title }) {
   const simulation =
     config.mockAnalyze || !config.openaiApiKey
       ? await runMockSimulation({ rulesText, playerCount, title })
-      : await runLlmSimulation({ rulesText, playerCount, title });
+      : await runLlmSimulation({
+          rulesText,
+          playerCount,
+          title,
+          simulationBrief: sanity.simulationBrief || "",
+          overview: sanity.overview || null,
+        });
 
   return {
     started: true,

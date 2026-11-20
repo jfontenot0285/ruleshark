@@ -19,6 +19,10 @@ export default function SuggestionsList({
         <p className="muted">
           {title || originalName}
           {truncated ? " · input truncated for analysis" : null}
+          {["orchestrated", "agentic", "single"].includes(analysis?.pipeline?.mode) &&
+          analysis?.pipeline?.steps?.length
+            ? ` · ${analysis.pipeline.mode}: ${analysis.pipeline.steps.join(" → ")}`
+            : null}
         </p>
         {analysis?.summary ? <p className="suggestions-summary">{analysis.summary}</p> : null}
       </div>
@@ -37,6 +41,11 @@ export default function SuggestionsList({
                 <div className="suggestion-meta">
                   <span className={`severity severity-${item.severity}`}>{item.severity}</span>
                   <span className="suggestion-type">{item.type}</span>
+                  {item.agent ? (
+                    <span className="suggestion-type" title="Specialist agent">
+                      {item.agent}
+                    </span>
+                  ) : null}
                   {status === "kept" ? <span className="status-pill">Kept</span> : null}
                   {status === "dismissed" ? (
                     <span className="status-pill is-dismissed">Dismissed</span>
